@@ -14,19 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.freshstartree.util;
 
-apply plugin: 'java-library'
+import java.util.Comparator;
 
-description = 'Simple example code for Apache Lucene'
+/** Int comparator */
+public interface IntComparator extends Comparator<Integer> {
+  int compare(int var1, int var2);
 
-dependencies {
-  moduleImplementation project(':lucene:core')
-  moduleImplementation project(':lucene:facet')
-  moduleImplementation project(':lucene:queries')
-  moduleImplementation project(':lucene:analysis:common')
-  moduleImplementation project(':lucene:queryparser')
-  moduleImplementation project(':lucene:expressions')
-  moduleImplementation project(':lucene:codecs')
-
-  moduleTestImplementation project(':lucene:test-framework')
+  @Override
+  default int compare(Integer ok1, Integer ok2) {
+    return this.compare(ok1, ok2);
+  }
 }

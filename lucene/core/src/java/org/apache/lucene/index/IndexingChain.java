@@ -236,9 +236,10 @@ final class IndexingChain implements Accountable {
   }
 
   Sorter.DocMap flush(SegmentWriteState state) throws IOException {
-
     // NOTE: caller (DocumentsWriterPerThread) handles
     // aborting on any exception from this method
+
+    // This gives old to new and new to old map
     Sorter.DocMap sortMap = maybeSortSegment(state);
     int maxDoc = state.segmentInfo.maxDoc();
     long t0 = System.nanoTime();
@@ -315,6 +316,9 @@ final class IndexingChain implements Accountable {
           TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0)
               + " ms to write postings and finish vectors");
     }
+
+    // add aggregate docs
+    //
 
     // Important to save after asking consumer to flush so
     // consumer can alter the FieldInfo* if necessary.  EG,
@@ -413,6 +417,7 @@ final class IndexingChain implements Accountable {
           perField = perField.next;
         }
       }
+      if (dvConsumer != null) dvConsumer.aggregate();
 
       // TODO: catch missing DV fields here?  else we have
       // null/"" depending on how docs landed in segments?
@@ -527,6 +532,7 @@ final class IndexingChain implements Accountable {
   }
 
   void processDocument(int docID, Iterable<? extends IndexableField> document) throws IOException {
+    // TODO gbh : THIS IS DONE DURING ADD DOCUMENT
     // number of unique fields by names (collapses multiple field instances by the same name)
     int fieldCount = 0;
     int indexedFieldCount = 0; // number of unique fields indexed with postings
@@ -621,6 +627,7 @@ final class IndexingChain implements Accountable {
       final Sort indexSort = indexWriterConfig.getIndexSort();
       validateIndexSortDVType(indexSort, pf.fieldName, s.docValuesType);
     }
+
     if (s.vectorDimension != 0) {
       validateMaxVectorDimension(
           pf.fieldName,
@@ -729,6 +736,7 @@ final class IndexingChain implements Accountable {
       indexDocValue(docID, pf, dvType, field);
     }
     if (fieldType.pointDimensionCount() != 0) {
+
       pf.pointValuesWriter.addPackedValue(docID, field.binaryValue());
     }
     if (fieldType.vectorDimension() != 0) {

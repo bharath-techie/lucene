@@ -14,19 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.freshstartree.util;
 
-apply plugin: 'java-library'
-
-description = 'Simple example code for Apache Lucene'
-
-dependencies {
-  moduleImplementation project(':lucene:core')
-  moduleImplementation project(':lucene:facet')
-  moduleImplementation project(':lucene:queries')
-  moduleImplementation project(':lucene:analysis:common')
-  moduleImplementation project(':lucene:queryparser')
-  moduleImplementation project(':lucene:expressions')
-  moduleImplementation project(':lucene:codecs')
-
-  moduleTestImplementation project(':lucene:test-framework')
+/** Functional interface for swapper */
+@FunctionalInterface
+public interface Swapper {
+  void swap(int var1, int var2);
 }

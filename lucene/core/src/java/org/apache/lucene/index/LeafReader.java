@@ -172,6 +172,16 @@ public abstract non-sealed class LeafReader extends IndexReader {
   public abstract NumericDocValues getNumericDocValues(String field) throws IOException;
 
   /**
+   * Get aggregated doc values
+   *
+   * @return Object TODO : change this
+   * @throws IOException if an I/O error occurred.
+   */
+  public Object getAggregatedDocValues() throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  /**
    * Returns {@link BinaryDocValues} for this field, or null if no binary doc values were indexed
    * for this field. The returned instance should only be used by a single thread.
    */

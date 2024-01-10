@@ -14,19 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.freshstartree.aggregator;
 
-apply plugin: 'java-library'
+/** Aggregated function type */
+public enum AggregationFunctionType {
+  COUNT("count"),
+  SUM("sum");
+  // AVG("avg");
 
-description = 'Simple example code for Apache Lucene'
+  private String name;
 
-dependencies {
-  moduleImplementation project(':lucene:core')
-  moduleImplementation project(':lucene:facet')
-  moduleImplementation project(':lucene:queries')
-  moduleImplementation project(':lucene:analysis:common')
-  moduleImplementation project(':lucene:queryparser')
-  moduleImplementation project(':lucene:expressions')
-  moduleImplementation project(':lucene:codecs')
+  AggregationFunctionType(String name) {
+    this.name = name;
+  }
 
-  moduleTestImplementation project(':lucene:test-framework')
+  public static AggregationFunctionType getAggregationFunctionType(String functionName) {
+    return AggregationFunctionType.valueOf(functionName);
+  }
+
+  public String getName() {
+    return name;
+  }
 }

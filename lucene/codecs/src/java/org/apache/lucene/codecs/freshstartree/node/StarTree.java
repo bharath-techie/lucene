@@ -14,19 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.freshstartree.node;
 
-apply plugin: 'java-library'
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 
-description = 'Simple example code for Apache Lucene'
+/** Interface for star tree */
+public interface StarTree {
 
-dependencies {
-  moduleImplementation project(':lucene:core')
-  moduleImplementation project(':lucene:facet')
-  moduleImplementation project(':lucene:queries')
-  moduleImplementation project(':lucene:analysis:common')
-  moduleImplementation project(':lucene:queryparser')
-  moduleImplementation project(':lucene:expressions')
-  moduleImplementation project(':lucene:codecs')
+  /** Get the root node of the star tree. */
+  StarTreeNode getRoot();
 
-  moduleTestImplementation project(':lucene:test-framework')
+  /**
+   * Get a list of all dimension names. The node dimension id is the index of the dimension name in
+   * this list.
+   */
+  List<String> getDimensionNames();
+
+  void printTree(Map<String, Map<String, String>> dictionaryMap) throws IOException;
 }

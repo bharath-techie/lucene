@@ -44,6 +44,16 @@ public abstract class DocValuesProducer implements Closeable {
   public abstract NumericDocValues getNumeric(FieldInfo field) throws IOException;
 
   /**
+   * Get aggregated values for this producer TODO : don't return Object type
+   *
+   * @return object
+   * @throws IOException if an I/O error occurred.
+   */
+  public Object getAggregatedDocValues() throws IOException {
+    return null;
+  }
+
+  /**
    * Returns {@link BinaryDocValues} for this field. The returned instance need not be thread-safe:
    * it will only be used by a single thread. The behavior is undefined if the doc values type of
    * the given field is not {@link DocValuesType#BINARY}. The return value is never {@code null}.

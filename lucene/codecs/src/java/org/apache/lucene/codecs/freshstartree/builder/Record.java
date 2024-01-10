@@ -14,19 +14,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.freshstartree.builder;
 
-apply plugin: 'java-library'
+/** Class representing a star tree record */
+public class Record {
+  // TODO : make it not specific to numeric tree
+  int[] dimensions;
+  Object[] metrics;
 
-description = 'Simple example code for Apache Lucene'
+  public Record(int dims, int metrics) {
 
-dependencies {
-  moduleImplementation project(':lucene:core')
-  moduleImplementation project(':lucene:facet')
-  moduleImplementation project(':lucene:queries')
-  moduleImplementation project(':lucene:analysis:common')
-  moduleImplementation project(':lucene:queryparser')
-  moduleImplementation project(':lucene:expressions')
-  moduleImplementation project(':lucene:codecs')
+    this.dimensions = new int[dims];
+    this.metrics = new Object[metrics];
+  }
 
-  moduleTestImplementation project(':lucene:test-framework')
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("Dimensions : ");
+    for (int l : dimensions) {
+      sb.append(l + " ");
+    }
+    sb.append("Metrics : ");
+    for (Object o : metrics) {
+      sb.append(o + " ");
+    }
+    return sb.toString();
+  }
 }

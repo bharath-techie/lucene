@@ -149,6 +149,11 @@ public abstract class CodecReader extends LeafReader {
   }
 
   @Override
+  public final Object getAggregatedDocValues() throws IOException {
+    return getDocValuesReader().getAggregatedDocValues();
+  }
+
+  @Override
   public final BinaryDocValues getBinaryDocValues(String field) throws IOException {
     ensureOpen();
     FieldInfo fi = getDVField(field, DocValuesType.BINARY);

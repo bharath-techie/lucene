@@ -15,18 +15,5 @@
  * limitations under the License.
  */
 
-apply plugin: 'java-library'
-
-description = 'Simple example code for Apache Lucene'
-
-dependencies {
-  moduleImplementation project(':lucene:core')
-  moduleImplementation project(':lucene:facet')
-  moduleImplementation project(':lucene:queries')
-  moduleImplementation project(':lucene:analysis:common')
-  moduleImplementation project(':lucene:queryparser')
-  moduleImplementation project(':lucene:expressions')
-  moduleImplementation project(':lucene:codecs')
-
-  moduleTestImplementation project(':lucene:test-framework')
-}
+/** query package - Todo : move it under main dir - keeping it here for readability */
+package org.apache.lucene.codecs.freshstartree.query;

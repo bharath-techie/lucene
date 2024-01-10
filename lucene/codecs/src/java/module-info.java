@@ -22,6 +22,12 @@ module org.apache.lucene.codecs {
   exports org.apache.lucene.codecs.blockterms;
   exports org.apache.lucene.codecs.blocktreeords;
   exports org.apache.lucene.codecs.bloom;
+  exports org.apache.lucene.codecs.freshstartree.aggregator;
+  exports org.apache.lucene.codecs.freshstartree.builder;
+  exports org.apache.lucene.codecs.freshstartree.codec;
+  exports org.apache.lucene.codecs.freshstartree.node;
+  exports org.apache.lucene.codecs.freshstartree.query;
+  exports org.apache.lucene.codecs.freshstartree.util;
   exports org.apache.lucene.codecs.memory;
   exports org.apache.lucene.codecs.simpletext;
   exports org.apache.lucene.codecs.uniformsplit;

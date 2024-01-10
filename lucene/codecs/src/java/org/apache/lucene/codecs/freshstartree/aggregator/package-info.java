@@ -14,19 +14,5 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-apply plugin: 'java-library'
-
-description = 'Simple example code for Apache Lucene'
-
-dependencies {
-  moduleImplementation project(':lucene:core')
-  moduleImplementation project(':lucene:facet')
-  moduleImplementation project(':lucene:queries')
-  moduleImplementation project(':lucene:analysis:common')
-  moduleImplementation project(':lucene:queryparser')
-  moduleImplementation project(':lucene:expressions')
-  moduleImplementation project(':lucene:codecs')
-
-  moduleTestImplementation project(':lucene:test-framework')
-}
+/** Aggregator classes for star tree */
+package org.apache.lucene.codecs.freshstartree.aggregator;

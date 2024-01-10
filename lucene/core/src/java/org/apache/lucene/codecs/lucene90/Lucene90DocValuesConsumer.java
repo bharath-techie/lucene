@@ -58,7 +58,7 @@ import org.apache.lucene.util.packed.DirectMonotonicWriter;
 import org.apache.lucene.util.packed.DirectWriter;
 
 /** writer for {@link Lucene90DocValuesFormat} */
-final class Lucene90DocValuesConsumer extends DocValuesConsumer {
+public final class Lucene90DocValuesConsumer extends DocValuesConsumer {
 
   IndexOutput data, meta;
   final int maxDoc;

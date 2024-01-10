@@ -29,7 +29,7 @@ import org.apache.lucene.util.packed.PackedInts;
 import org.apache.lucene.util.packed.PackedLongValues;
 
 /** Buffers up pending long per doc, then flushes when segment flushes. */
-class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
+public class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
 
   private final PackedLongValues.Builder pending;
   private PackedLongValues finalValues;
@@ -48,6 +48,7 @@ class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
     iwBytesUsed.addAndGet(bytesUsed);
   }
 
+  /** Add a new value fod doc id */
   public void addValue(int docID, long value) {
     if (docID <= lastDocID) {
       throw new IllegalArgumentException(
@@ -143,13 +144,14 @@ class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
     };
   }
 
-  // iterates over the values we have in ram
-  static class BufferedNumericDocValues extends NumericDocValues {
+  /** iterates over the values we have in ram */
+  public static class BufferedNumericDocValues extends NumericDocValues {
     final PackedLongValues.Iterator iter;
     final DocIdSetIterator docsWithField;
     private long value;
 
-    BufferedNumericDocValues(PackedLongValues values, DocIdSetIterator docsWithFields) {
+    /** Values and doc with fields */
+    public BufferedNumericDocValues(PackedLongValues values, DocIdSetIterator docsWithFields) {
       this.iter = values.iterator();
       this.docsWithField = docsWithFields;
     }

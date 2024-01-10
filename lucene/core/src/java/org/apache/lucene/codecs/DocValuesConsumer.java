@@ -122,6 +122,15 @@ public abstract class DocValuesConsumer implements Closeable {
       throws IOException;
 
   /**
+   * Aggregate doc values during indexing
+   *
+   * @throws IOException if an I/O error occurred.
+   */
+  public void aggregate() throws IOException {
+    // no-op
+  }
+
+  /**
    * Merges in the fields from the readers in <code>mergeState</code>. The default implementation
    * calls {@link #mergeNumericField}, {@link #mergeBinaryField}, {@link #mergeSortedField}, {@link
    * #mergeSortedSetField}, or {@link #mergeSortedNumericField} for each field, depending on its
@@ -153,6 +162,8 @@ public abstract class DocValuesConsumer implements Closeable {
         }
       }
     }
+
+    mergeAggregatedValues(mergeState);
   }
 
   /** Tracks state of one numeric sub-reader that we are merging */
@@ -171,6 +182,14 @@ public abstract class DocValuesConsumer implements Closeable {
       return values.nextDoc();
     }
   }
+
+  /**
+   * Merge aggregated values if any
+   *
+   * @param mergeState merge state
+   * @throws IOException if an I/O error occurred.
+   */
+  public void mergeAggregatedValues(MergeState mergeState) throws IOException {}
 
   /**
    * Merges the numeric docvalues from <code>MergeState</code>.

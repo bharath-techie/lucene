@@ -52,7 +52,7 @@ import org.apache.lucene.util.packed.DirectMonotonicReader;
 import org.apache.lucene.util.packed.DirectReader;
 
 /** reader for {@link Lucene90DocValuesFormat} */
-final class Lucene90DocValuesProducer extends DocValuesProducer {
+public final class Lucene90DocValuesProducer extends DocValuesProducer {
   private final Map<String, NumericEntry> numerics;
   private final Map<String, BinaryEntry> binaries;
   private final Map<String, SortedEntry> sorted;
@@ -64,7 +64,7 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
   private final boolean merging;
 
   /** expert: instantiates a new reader */
-  Lucene90DocValuesProducer(
+  public Lucene90DocValuesProducer(
       SegmentReadState state,
       String dataCodec,
       String dataExtension,
@@ -322,7 +322,8 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
     data.close();
   }
 
-  private static class NumericEntry {
+  /** Numeric entry */
+  public static class NumericEntry {
     long[] table;
     int blockShift;
     byte bitsPerValue;
