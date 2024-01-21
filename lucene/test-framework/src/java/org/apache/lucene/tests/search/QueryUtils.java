@@ -203,6 +203,12 @@ public class QueryUtils {
       }
 
       @Override
+      public Object getAggregatedDocValues()
+          throws IOException {
+        return null;
+      }
+
+      @Override
       public BinaryDocValues getBinaryDocValues(String field) throws IOException {
         return null;
       }

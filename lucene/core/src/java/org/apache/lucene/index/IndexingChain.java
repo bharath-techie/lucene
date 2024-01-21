@@ -204,7 +204,10 @@ final class IndexingChain implements Accountable {
         }
         return null;
       }
-
+      @Override
+      public Object getAggregatedDocValues() {
+        return null;
+      }
       @Override
       public FieldInfos getFieldInfos() {
         return fieldInfos.finish();
@@ -880,6 +883,12 @@ final class IndexingChain implements Accountable {
                         + "]");
               }
               return DocValues.emptyNumeric();
+            }
+
+            @Override
+            public Object getAggregatedDocValues()
+                throws IOException {
+              return null;
             }
 
             @Override

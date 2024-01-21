@@ -177,9 +177,7 @@ public abstract non-sealed class LeafReader extends IndexReader {
    * @return Object TODO : change this
    * @throws IOException if an I/O error occurred.
    */
-  public Object getAggregatedDocValues() throws IOException {
-    throw new UnsupportedOperationException();
-  }
+  public abstract Object getAggregatedDocValues() throws IOException;
 
   /**
    * Returns {@link BinaryDocValues} for this field, or null if no binary doc values were indexed

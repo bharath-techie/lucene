@@ -709,6 +709,7 @@ public class TestCodec extends LuceneTestCase {
       public void collect(int doc)
           throws IOException {
         docsBuilder.grow(1).add(doc);
+        //context.reader().get
         Object obj = context.reader().getAggregatedDocValues();
         if(obj != null) {
           StarTreeAggregatedValues val = (StarTreeAggregatedValues) obj;

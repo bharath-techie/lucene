@@ -117,6 +117,12 @@ class MergeReaderWrapper extends LeafReader {
   }
 
   @Override
+  public Object getAggregatedDocValues()
+      throws IOException {
+    return docValues.getAggregatedDocValues();
+  }
+
+  @Override
   public BinaryDocValues getBinaryDocValues(String field) throws IOException {
     ensureOpen();
     FieldInfo fi = getFieldInfos().fieldInfo(field);

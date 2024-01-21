@@ -359,6 +359,14 @@ public class ParallelLeafReader extends LeafReader {
   }
 
   @Override
+  public Object getAggregatedDocValues()
+      throws IOException {
+    ensureOpen();
+    LeafReader reader = null;// = fieldToReader.get(field);
+    return reader == null ? null : reader.getAggregatedDocValues();
+  }
+
+  @Override
   public BinaryDocValues getBinaryDocValues(String field) throws IOException {
     ensureOpen();
     LeafReader reader = fieldToReader.get(field);
