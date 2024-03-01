@@ -184,6 +184,11 @@ public abstract class CodecReader extends LeafReader {
   }
 
   @Override
+  public final Object getAggregatedDocValues() throws IOException {
+    return getDocValuesReader().getAggregatedDocValues();
+  }
+
+  @Override
   public final SortedNumericDocValues getSortedNumericDocValues(String field) throws IOException {
     ensureOpen();
 

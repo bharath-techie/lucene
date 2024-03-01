@@ -406,6 +406,12 @@ public class ParallelLeafReader extends LeafReader {
   }
 
   @Override
+  public Object getAggregatedDocValues()
+      throws IOException {
+    return null;
+  }
+
+  @Override
   public SortedNumericDocValues getSortedNumericDocValues(String field) throws IOException {
     ensureOpen();
     LeafReader reader = fieldToReader.get(field);

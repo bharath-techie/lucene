@@ -206,7 +206,7 @@ public class Lucene95Codec extends Codec {
   }
 
   @Override
-  public final DocValuesFormat docValuesFormat() {
+  public DocValuesFormat docValuesFormat() {
     return docValuesFormat;
   }
 

@@ -122,6 +122,14 @@ public abstract class DocValuesConsumer implements Closeable {
       throws IOException;
 
   /**
+   * Aggregate doc values
+   *
+   * @throws IOException if an I/O error occurred
+   */
+  public void aggregate() throws IOException {
+    // default no op
+  }
+  /**
    * Merges in the fields from the readers in <code>mergeState</code>. The default implementation
    * calls {@link #mergeNumericField}, {@link #mergeBinaryField}, {@link #mergeSortedField}, {@link
    * #mergeSortedSetField}, or {@link #mergeSortedNumericField} for each field, depending on its
