@@ -32,6 +32,8 @@ import org.apache.lucene.util.ArrayUtil.ByteArrayComparator;
 import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.packed.PackedInts;
+
 
 /**
  * Abstract class for range queries against single or multidimensional points such as {@link
@@ -127,6 +129,7 @@ public abstract class PointRangeQuery extends Query {
       private final ByteArrayComparator comparator = ArrayUtil.getUnsignedComparator(bytesPerDim);
 
       private boolean matches(byte[] packedValue) {
+
         for (int dim = 0; dim < numDims; dim++) {
           int offset = dim * bytesPerDim;
           if (comparator.compare(packedValue, offset, lowerPoint, offset) < 0) {
@@ -390,7 +393,7 @@ public abstract class PointRangeQuery extends Query {
           // crossing leaves.
           // docCount == size : counting according number of points in leaf node, so must be
           // single-valued.
-          if (numDims == 1 && values.getDocCount() == values.size()) {
+          if (numDims < 4 && values.getDocCount() == values.size()) {
             return (int) pointCount(values.getPointTree(), this::relate, this::matches);
           }
         }
@@ -422,15 +425,18 @@ public abstract class PointRangeQuery extends Query {
               @Override
               public void visit(int docID) {
                 // this branch should be unreachable
-                throw new UnsupportedOperationException(
-                    "This IntersectVisitor does not perform any actions on a "
-                        + "docID="
-                        + docID
-                        + " node being visited");
+                System.out.println("Exception :(");
+//                throw new UnsupportedOperationException(
+//                    "This IntersectVisitor does not perform any actions on a "
+//                        + "docID="
+//                        + docID
+//                        + " node being visited");
               }
 
               @Override
               public void visit(int docID, byte[] packedValue) {
+                //System.out.println(" ==== No Exception === ");
+                //System.out.println(IntPoint.decodeDimension(packedValue, 0));
                 if (leafComparator.test(packedValue)) {
                   matchingNodeCount[0]++;
                 }
@@ -457,8 +463,25 @@ public abstract class PointRangeQuery extends Query {
             // This cell is fully inside the query shape: return the size of the entire node as the
             // count
             matchingNodeCount[0] += pointTree.size();
+            //matchingNodeCount[0] +=1;
+//            System.out.println("Cell inside" + " [" + IntPoint.decodeDimension(pointTree.getMinPackedValue(), 0) + "," +
+//                IntPoint.decodeDimension(pointTree.getMinPackedValue(), Integer.BYTES) + "]" +
+//                " [" +
+//                IntPoint.decodeDimension(pointTree.getMaxPackedValue(), 0) + "," +
+//                IntPoint.decodeDimension(pointTree.getMaxPackedValue(), Integer.BYTES) +
+//                "]" + " :: Size == " + pointTree.size());
             return;
           case CELL_CROSSES_QUERY:
+//            System.out.println("Cell crossed" + " [" + IntPoint.decodeDimension(pointTree.getMinPackedValue(), 0) + "," +
+//                    IntPoint.decodeDimension(pointTree.getMinPackedValue(), Integer.BYTES) + "," +
+//                IntPoint.decodeDimension(pointTree.getMinPackedValue(), 2 * Integer.BYTES)
+//
+//                + "]" +
+//                    " [" +
+//                IntPoint.decodeDimension(pointTree.getMaxPackedValue(), 0) + "," +
+//                    IntPoint.decodeDimension(pointTree.getMaxPackedValue(), Integer.BYTES)  + "," +
+//                IntPoint.decodeDimension(pointTree.getMaxPackedValue(), 2 * Integer.BYTES) +
+//                "]" + " :: Size == " + pointTree.size());
             /*
             The cell crosses the shape boundary, or the cell fully contains the query, so we fall
             through and do full counting.
@@ -469,6 +492,7 @@ public abstract class PointRangeQuery extends Query {
               } while (pointTree.moveToSibling());
               pointTree.moveToParent();
             } else {
+              //System.out.println("======== Visiting doc values :( ====");
               // we have reached a leaf node here.
               pointTree.visitDocValues(visitor);
               // leaf node count is saved in the matchingNodeCount array by the visitor

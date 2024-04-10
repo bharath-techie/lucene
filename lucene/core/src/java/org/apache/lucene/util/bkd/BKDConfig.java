@@ -23,7 +23,7 @@ import org.apache.lucene.util.ArrayUtil;
 public final class BKDConfig {
 
   /** Default maximum number of point in each leaf block */
-  public static final int DEFAULT_MAX_POINTS_IN_LEAF_NODE = 512;
+  public static final int DEFAULT_MAX_POINTS_IN_LEAF_NODE = 2;
 
   /** Maximum number of index dimensions (2 * max index dimensions) */
   public static final int MAX_DIMS = 16;

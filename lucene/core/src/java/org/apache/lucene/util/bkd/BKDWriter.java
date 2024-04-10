@@ -516,6 +516,8 @@ public class BKDWriter implements Closeable {
     final int numLeaves =
         Math.toIntExact((pointCount + config.maxPointsInLeafNode - 1) / config.maxPointsInLeafNode);
     final int numSplits = numLeaves - 1;
+    System.out.println("Point count : " + pointCount + " - max points in leaf node " + config.maxPointsInLeafNode
+    + " num splits : " + numSplits  + " num leaves : " + numLeaves);
 
     checkMaxLeafNodeCount(numLeaves);
 
@@ -532,6 +534,7 @@ public class BKDWriter implements Closeable {
 
     final long dataStartFP = dataOut.getFilePointer();
     final int[] parentSplits = new int[config.numIndexDims];
+    //System.out.println("Here : parent splits - " + parentSplits[0] + " - " + parentSplits[1]);
     build(
         0,
         numLeaves,
@@ -828,8 +831,12 @@ public class BKDWriter implements Closeable {
 
   private int getNumLeftLeafNodes(int numLeaves) {
     assert numLeaves > 1 : "getNumLeftLeaveNodes() called with " + numLeaves;
+
+    //System.out.println("getNumLeftLeaveNodes() called with " + numLeaves);
     // return the level that can be filled with this number of leaves
     int lastFullLevel = 31 - Integer.numberOfLeadingZeros(numLeaves);
+
+    //System.out.println("Last full level ");
     // how many leaf nodes are in the full level
     int leavesFullLevel = 1 << lastFullLevel;
     // half of the leaf nodes from the full level goes to the left
@@ -1540,8 +1547,10 @@ public class BKDWriter implements Closeable {
     }
     for (int dim = 0; dim < config.numIndexDims; ++dim) {
       final int offset = dim * config.bytesPerDim;
+      //System.out.println("Parents dim splits : " + parentSplits[dim] + " dim : " + dim);
       if (parentSplits[dim] < maxNumSplits / 2
           && comparator.compare(minPackedValue, offset, maxPackedValue, offset) != 0) {
+       // System.out.println("SPLIT: " + dim + " " + config.numIndexDims);
         return dim;
       }
     }
@@ -1556,7 +1565,7 @@ public class BKDWriter implements Closeable {
       }
     }
 
-    // System.out.println("SPLIT: " + splitDim);
+//    System.out.println("SPLIT: " + splitDim + " " + config.numIndexDims);
     return splitDim;
   }
 
@@ -1594,10 +1603,11 @@ public class BKDWriter implements Closeable {
       long[] leafBlockFPs,
       int[] spareDocIds)
       throws IOException {
-
     if (numLeaves == 1) {
+    //if (comparator.compare(minPackedValue, 0, maxPackedValue, 0) == 0) {
       // leaf node
       final int count = to - from;
+      //System.out.println("LEAF node : count : " + count);
       assert count <= config.maxPointsInLeafNode;
 
       // Compute common prefixes
@@ -1732,6 +1742,7 @@ public class BKDWriter implements Closeable {
       int numLeftLeafNodes = getNumLeftLeafNodes(numLeaves);
       // How many points will be in the left tree:
       final int mid = from + numLeftLeafNodes * config.maxPointsInLeafNode;
+      //System.out.println("Leaves : " + numLeaves + " Left : " + numLeftLeafNodes + " Mid : " + mid);
 
       final int commonPrefixLen =
           commonPrefixComparator.compare(
