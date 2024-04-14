@@ -119,7 +119,7 @@ public class TestPoint extends LuceneTestCase {
     System.out.println("Expected : " + total);
     w.forceMerge(1);
     //w.commit();
-    queryDayRangeWithStatus(w);
+    queryStatusHourPoints(w);
   }
 
   private void queryPoints(IndexWriter w)
@@ -312,6 +312,30 @@ public class TestPoint extends LuceneTestCase {
     searcher = newSearcher(reader, false);
 
     int[] min = new int[]{0,1800000/24,500};
+    int[] max = new int[]{2500000,2500000,500};
+
+    Query query =
+        IntPoint.newRangeQuery("timestamp-status", min, max);
+    startTime = System.nanoTime();
+    Weight weight = searcher.createWeight(query, ScoreMode.COMPLETE, 1f);
+    System.out.println("Count : " + weight.count(reader.leaves().get(0)));
+    double millis = (System.nanoTime() - startTime) * 1.0 / 1000000.0;
+    System.out.println("===== Finished querying point-tree in ms => day range + status : " +
+        millis + " ms");
+  }
+
+  private void queryDayRangeWithHourDayStatus(IndexWriter w)
+      throws IOException {
+    long startTime = System.currentTimeMillis();
+
+    IndexReader reader = DirectoryReader.open(w);
+    IndexSearcher searcher = newSearcher(reader, false);
+
+
+    reader = DirectoryReader.open(w);
+    searcher = newSearcher(reader, false);
+
+    int[] min = new int[]{1800000,1800000/24,500};
     int[] max = new int[]{2500000,2500000,500};
 
     Query query =

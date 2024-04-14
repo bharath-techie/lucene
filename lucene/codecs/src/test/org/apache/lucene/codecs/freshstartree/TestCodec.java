@@ -174,6 +174,8 @@ public class TestCodec extends LuceneTestCase {
     query(w);
   }
 
+
+
   public void testStarTreeHighCardBelowMaxDoc()
       throws IOException {
     Analyzer analyzer = new StandardAnalyzer();
@@ -670,7 +672,7 @@ public class TestCodec extends LuceneTestCase {
 
       @Override
       public void finish() throws IOException {
-        //System.out.println("SUM in normal query : " + sum);
+        System.out.println("SUM in normal query : " + sum);
         matchingDocs.add(new MatchingDocs(this.context, docsBuilder.build(), totalHits));
         docsBuilder = null;
         context = null;

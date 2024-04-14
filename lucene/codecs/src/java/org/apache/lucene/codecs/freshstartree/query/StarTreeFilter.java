@@ -60,7 +60,7 @@ public class StarTreeFilter {
   DocIdSetBuilder docsWithField;
   DocIdSetBuilder.BulkAdder adder;
   Map<String, NumericDocValues> dimValueMap;
-
+  Map<String, NumericDocValues> metricValMap;
   public StarTreeFilter(
       StarTreeAggregatedValues starTreeAggrStructure,
       Map<String, List<Predicate<Integer>>> predicateEvaluators,
@@ -69,6 +69,7 @@ public class StarTreeFilter {
     // This filter operator does not support AND/OR/NOT operations.
     _starTree = starTreeAggrStructure._starTree;
     dimValueMap = starTreeAggrStructure.dimensionValues;
+    metricValMap = starTreeAggrStructure.metricValues;
     _predicateEvaluators =
         predicateEvaluators != null ? predicateEvaluators : Collections.emptyMap();
     _groupByColumns = groupByColumns != null ? groupByColumns : Collections.emptySet();
@@ -114,6 +115,44 @@ public class StarTreeFilter {
       return ConjunctionUtils.intersectIterators(andIterators);
     }
     return andIterators.get(0);
+  }
+
+  public long getStarTreeSum() throws IOException {
+    StarTreeResult starTreeResult = traverseStarTree();
+    List<DocIdSetIterator> andIterators = new ArrayList<>();
+    andIterators.add(starTreeResult._matchedDocIds.build().iterator());
+
+    // System.out.println("Remaining predicate columns : " +
+    // starTreeResult._remainingPredicateColumns.toString());
+    for (String remainingPredicateColumn : starTreeResult._remainingPredicateColumns) {
+      // TODO : set to max value of doc values
+      DocIdSetBuilder builder = new DocIdSetBuilder(Integer.MAX_VALUE);
+      List<Predicate<Integer>> compositePredicateEvaluators =
+          _predicateEvaluators.get(remainingPredicateColumn);
+      NumericDocValues ndv = this.dimValueMap.get(remainingPredicateColumn);
+      for (int docID = ndv.nextDoc(); docID != NO_MORE_DOCS; docID = ndv.nextDoc()) {
+        for (Predicate<Integer> compositePredicateEvaluator : compositePredicateEvaluators) {
+          // TODO : this might be expensive as its done against all doc values docs
+          if (compositePredicateEvaluator.test((int) ndv.longValue())) {
+            // System.out.println("Adding doc id : " + docID + " for status " + ndv.longValue());
+            builder.grow(1).add(docID);
+            break;
+          }
+        }
+      }
+      andIterators.add(builder.build().iterator());
+    }
+    DocIdSetIterator a = null;
+    if (andIterators.size() > 1) {
+      a = ConjunctionUtils.intersectIterators(andIterators);
+    }
+    a = andIterators.get(0);
+    NumericDocValues ndv = this.metricValMap.get("status_sum");
+    long sum = 0;
+    for (int docID = ndv.nextDoc(); docID != NO_MORE_DOCS; docID = ndv.nextDoc()) {
+      sum += ndv.longValue();
+    }
+    return sum;
   }
 
   /**
