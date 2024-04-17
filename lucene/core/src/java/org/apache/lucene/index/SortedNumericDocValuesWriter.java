@@ -31,7 +31,7 @@ import org.apache.lucene.util.packed.PackedInts;
 import org.apache.lucene.util.packed.PackedLongValues;
 
 /** Buffers up pending long[] per doc, sorts, then flushes when segment flushes. */
-class SortedNumericDocValuesWriter extends DocValuesWriter<SortedNumericDocValues> {
+public class SortedNumericDocValuesWriter extends DocValuesWriter<SortedNumericDocValues> {
   private final PackedLongValues.Builder pending; // stream of all values
   private PackedLongValues.Builder pendingCounts; // count of values per doc
   private final DocsWithFieldSet docsWithField;
@@ -45,7 +45,7 @@ class SortedNumericDocValuesWriter extends DocValuesWriter<SortedNumericDocValue
   private PackedLongValues finalValues;
   private PackedLongValues finalValuesCount;
 
-  SortedNumericDocValuesWriter(FieldInfo fieldInfo, Counter iwBytesUsed) {
+  public SortedNumericDocValuesWriter(FieldInfo fieldInfo, Counter iwBytesUsed) {
     this.fieldInfo = fieldInfo;
     this.iwBytesUsed = iwBytesUsed;
     pending = PackedLongValues.deltaPackedBuilder(PackedInts.COMPACT);
@@ -114,7 +114,7 @@ class SortedNumericDocValuesWriter extends DocValuesWriter<SortedNumericDocValue
   }
 
   @Override
-  SortedNumericDocValues getDocValues() {
+  public SortedNumericDocValues getDocValues() {
     if (finalValues == null) {
       assert finalValuesCount == null;
       finishCurrentDoc();

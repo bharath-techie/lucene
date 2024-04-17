@@ -33,6 +33,7 @@ import org.apache.lucene.index.ImpactsEnum;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
@@ -53,7 +54,7 @@ import org.apache.lucene.util.packed.DirectMonotonicReader;
 import org.apache.lucene.util.packed.DirectReader;
 
 /** reader for {@link Lucene90DocValuesFormat} */
-final class Lucene90DocValuesProducer extends DocValuesProducer {
+public class Lucene90DocValuesProducer extends DocValuesProducer {
   private final Map<String, NumericEntry> numerics;
   private final Map<String, BinaryEntry> binaries;
   private final Map<String, SortedEntry> sorted;
@@ -64,8 +65,9 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
   private int version = -1;
   private final boolean merging;
 
+
   /** expert: instantiates a new reader */
-  Lucene90DocValuesProducer(
+  public Lucene90DocValuesProducer(
       SegmentReadState state,
       String dataCodec,
       String dataExtension,
@@ -96,7 +98,7 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
                 state.segmentInfo.getId(),
                 state.segmentSuffix);
 
-        readFields(in, state.fieldInfos);
+        readFields(in, state.fieldInfos, state.segmentInfo);
 
       } catch (Throwable exception) {
         priorE = exception;
@@ -137,6 +139,10 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
     }
   }
 
+  protected FieldInfos getFieldInfos(SegmentReadState state) {
+    return state.fieldInfos;
+  }
+
   // Used for cloning
   private Lucene90DocValuesProducer(
       Map<String, NumericEntry> numerics,
@@ -165,26 +171,31 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
         numerics, binaries, sorted, sortedSets, sortedNumerics, data, maxDoc, version, true);
   }
 
-  private void readFields(IndexInput meta, FieldInfos infos) throws IOException {
+  protected void readFields(IndexInput meta, FieldInfos infos, SegmentInfo segmentInfo) throws IOException {
     for (int fieldNumber = meta.readInt(); fieldNumber != -1; fieldNumber = meta.readInt()) {
       FieldInfo info = infos.fieldInfo(fieldNumber);
       if (info == null) {
         throw new CorruptIndexException("Invalid field number: " + fieldNumber, meta);
       }
-      byte type = meta.readByte();
-      if (type == Lucene90DocValuesFormat.NUMERIC) {
-        numerics.put(info.name, readNumeric(meta));
-      } else if (type == Lucene90DocValuesFormat.BINARY) {
-        binaries.put(info.name, readBinary(meta));
-      } else if (type == Lucene90DocValuesFormat.SORTED) {
-        sorted.put(info.name, readSorted(meta));
-      } else if (type == Lucene90DocValuesFormat.SORTED_SET) {
-        sortedSets.put(info.name, readSortedSet(meta));
-      } else if (type == Lucene90DocValuesFormat.SORTED_NUMERIC) {
-        sortedNumerics.put(info.name, readSortedNumeric(meta));
-      } else {
-        throw new CorruptIndexException("invalid type: " + type, meta);
-      }
+      readField(info.name, meta);
+    }
+  }
+
+  protected void readField(String name, IndexInput meta)
+      throws IOException {
+    byte type = meta.readByte();
+    if (type == Lucene90DocValuesFormat.NUMERIC) {
+      numerics.put(name, readNumeric(meta));
+    } else if (type == Lucene90DocValuesFormat.BINARY) {
+      binaries.put(name, readBinary(meta));
+    } else if (type == Lucene90DocValuesFormat.SORTED) {
+      sorted.put(name, readSorted(meta));
+    } else if (type == Lucene90DocValuesFormat.SORTED_SET) {
+      sortedSets.put(name, readSortedSet(meta));
+    } else if (type == Lucene90DocValuesFormat.SORTED_NUMERIC) {
+      sortedNumerics.put(name, readSortedNumeric(meta));
+    } else {
+      throw new CorruptIndexException("invalid type: " + type, meta);
     }
   }
 

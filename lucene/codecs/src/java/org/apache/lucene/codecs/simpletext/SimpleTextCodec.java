@@ -17,6 +17,7 @@
 package org.apache.lucene.codecs.simpletext;
 
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.DataCubesFormat;
 import org.apache.lucene.codecs.CompoundFormat;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
@@ -106,5 +107,10 @@ public final class SimpleTextCodec extends Codec {
   @Override
   public KnnVectorsFormat knnVectorsFormat() {
     return knnVectorsFormat;
+  }
+
+  @Override
+  public DataCubesFormat dataCubesFormat() {
+    return null;//todo
   }
 }

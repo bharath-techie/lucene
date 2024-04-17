@@ -449,6 +449,13 @@ public abstract class FilterLeafReader extends LeafReader {
   }
 
   @Override
+  public DataCubeValues<?> getDataCubeValues(String field)
+      throws IOException {
+    ensureOpen();
+    return in.getDataCubeValues(field);
+  }
+
+  @Override
   public SortedNumericDocValues getSortedNumericDocValues(String field) throws IOException {
     ensureOpen();
     return in.getSortedNumericDocValues(field);

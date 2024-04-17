@@ -18,6 +18,7 @@ package org.apache.lucene.codecs.lucene95;
 
 import java.util.Objects;
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.DataCubesFormat;
 import org.apache.lucene.codecs.CompoundFormat;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
@@ -30,6 +31,7 @@ import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.SegmentInfoFormat;
 import org.apache.lucene.codecs.StoredFieldsFormat;
 import org.apache.lucene.codecs.TermVectorsFormat;
+import org.apache.lucene.codecs.example.ExampleDataCubesFormat;
 import org.apache.lucene.codecs.lucene90.Lucene90CompoundFormat;
 import org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat;
 import org.apache.lucene.codecs.lucene90.Lucene90LiveDocsFormat;
@@ -166,6 +168,11 @@ public class Lucene95Codec extends Codec {
   @Override
   public final KnnVectorsFormat knnVectorsFormat() {
     return knnVectorsFormat;
+  }
+
+  @Override
+  public DataCubesFormat dataCubesFormat() {
+    return new ExampleDataCubesFormat();
   }
 
   /**

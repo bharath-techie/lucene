@@ -53,6 +53,12 @@ abstract class DocValuesLeafReader extends LeafReader {
   }
 
   @Override
+  public DataCubeValues<?> getDataCubeValues(String field)
+      throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public final ByteVectorValues getByteVectorValues(String field) throws IOException {
     throw new UnsupportedOperationException();
   }

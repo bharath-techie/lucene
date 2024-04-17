@@ -208,7 +208,8 @@ public class SimpleTextSegmentInfoFormat extends SegmentInfoFormat {
               diagnostics,
               id,
               attributes,
-              indexSort);
+              indexSort,
+              null);//todo
       info.setFiles(files);
       return info;
     }

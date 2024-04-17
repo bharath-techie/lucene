@@ -484,6 +484,12 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
     return this;
   }
 
+  public IndexWriterConfig setDataCubesConfig(DataCubesConfig config) {
+
+    this.dataCubesConfig = config;
+    return this;
+  }
+
   /**
    * Set the comparator for sorting leaf readers. A DirectoryReader opened from a IndexWriter with
    * this configuration will have its leaf readers sorted with the provided leaf sorter.

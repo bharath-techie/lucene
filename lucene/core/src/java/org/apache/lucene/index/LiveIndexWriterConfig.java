@@ -98,6 +98,8 @@ public class LiveIndexWriterConfig {
   /** The field names involved in the index sort */
   protected Set<String> indexSortFields = Collections.emptySet();
 
+  protected DataCubesConfig dataCubesConfig = null;
+
   /**
    * if an indexing thread should check for pending flushes on update in order to help out on a full
    * flush
@@ -232,6 +234,10 @@ public class LiveIndexWriterConfig {
    */
   public int getMaxBufferedDocs() {
     return maxBufferedDocs;
+  }
+
+  public DataCubesConfig getDataCubesConfig() {
+    return dataCubesConfig;
   }
 
   /**

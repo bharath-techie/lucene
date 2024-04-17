@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import org.apache.lucene.codecs.DataCubesProducer;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.KnnVectorsReader;
@@ -62,6 +63,8 @@ public class MergeState {
 
   /** DocValues producers being merged */
   public final DocValuesProducer[] docValuesProducers;
+
+  public final DataCubesProducer<?>[] dataCubesReaders;
 
   /** FieldInfos being merged */
   public final FieldInfos[] fieldInfos;
@@ -104,6 +107,7 @@ public class MergeState {
     knnVectorsReaders = new KnnVectorsReader[numReaders];
     fieldInfos = new FieldInfos[numReaders];
     liveDocs = new Bits[numReaders];
+    dataCubesReaders = new DataCubesProducer<?>[numReaders];
 
     int numDocs = 0;
     for (int i = 0; i < numReaders; i++) {
@@ -146,6 +150,11 @@ public class MergeState {
       knnVectorsReaders[i] = reader.getVectorReader();
       if (knnVectorsReaders[i] != null) {
         knnVectorsReaders[i] = knnVectorsReaders[i].getMergeInstance();
+      }
+
+      dataCubesReaders[i] = reader.getDataCubesReader();
+      if (dataCubesReaders[i] != null) {
+        dataCubesReaders[i] = dataCubesReaders[i].getMergeInstance();
       }
 
       numDocs += reader.numDocs();

@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.codecs.DataCubesFormat;
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
@@ -103,6 +104,7 @@ final class IndexingChain implements Accountable {
     byteBlockAllocator = new ByteBlockPool.DirectTrackingAllocator(bytesUsed);
     IntBlockPool.Allocator intBlockAllocator = new IntBlockAllocator(bytesUsed);
     this.indexWriterConfig = indexWriterConfig;
+    // TODO : add here
     assert segmentInfo.getIndexSort() == indexWriterConfig.getIndexSort();
     this.fieldInfos = fieldInfos;
     this.infoStream = indexWriterConfig.getInfoStream();
@@ -245,6 +247,9 @@ final class IndexingChain implements Accountable {
 
     // NOTE: caller (DocumentsWriterPerThread) handles
     // aborting on any exception from this method
+
+    DataCubesConfig dataCubesConfig = state.segmentInfo.getDataCubesConfig();
+
     Sorter.DocMap sortMap = maybeSortSegment(state);
     int maxDoc = state.segmentInfo.maxDoc();
     long t0 = System.nanoTime();
@@ -260,6 +265,12 @@ final class IndexingChain implements Accountable {
             state.fieldInfos,
             IOContext.READ,
             state.segmentSuffix);
+    t0 = System.nanoTime();
+    writeDataCubes(state, sortMap, dataCubesConfig);
+    if (infoStream.isEnabled("IW")) {
+      infoStream.message(
+          "IW", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0) + " ms to write docValues");
+    }
 
     t0 = System.nanoTime();
     writeDocValues(state, sortMap);
@@ -267,6 +278,8 @@ final class IndexingChain implements Accountable {
       infoStream.message(
           "IW", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0) + " ms to write docValues");
     }
+
+
 
     t0 = System.nanoTime();
     writePoints(state, sortMap);
@@ -441,6 +454,71 @@ final class IndexingChain implements Accountable {
             "segment=" + state.segmentInfo + ": fieldInfos has no docValues but wrote them");
       }
     } else if (dvConsumer == null) {
+      // BUG
+      throw new AssertionError(
+          "segment=" + state.segmentInfo + ": fieldInfos has docValues but did not wrote them");
+    }
+  }
+
+  private void writeDataCubes(SegmentWriteState state, Sorter.DocMap sortMap, DataCubesConfig dataCubesConfig) throws IOException {
+    DataCubeDocValuesConsumer dataCubeDocValuesConsumer = null;
+    boolean success = false;
+    try {
+      for (int i = 0; i < fieldHash.length; i++) {
+        PerField perField = fieldHash[i];
+        while (perField != null) {
+          if (perField.docValuesWriter != null) {
+            if (perField.fieldInfo.getDocValuesType() == DocValuesType.NONE) {
+              // BUG
+              throw new AssertionError(
+                  "segment="
+                      + state.segmentInfo
+                      + ": field=\""
+                      + perField.fieldInfo.name
+                      + "\" has no docValues but wrote them");
+            }
+            if (dataCubeDocValuesConsumer == null) {
+              // lazy init
+              DataCubesFormat fmt = state.segmentInfo.getCodec().dataCubesFormat();
+              dataCubeDocValuesConsumer = fmt.fieldsConsumer(state, dataCubesConfig);
+            }
+            perField.docValuesWriter.flush(state, sortMap, dataCubeDocValuesConsumer);
+            //perField.docValuesWriter = null;
+          } else if (perField.fieldInfo != null
+              && perField.fieldInfo.getDocValuesType() != DocValuesType.NONE) {
+            // BUG
+            throw new AssertionError(
+                "segment="
+                    + state.segmentInfo
+                    + ": field=\""
+                    + perField.fieldInfo.name
+                    + "\" has docValues but did not write them");
+          }
+          perField = perField.next;
+        }
+      }
+      // IMPORTANT : This call creates the star tree data structures along with the associated doc values in the POC
+      dataCubeDocValuesConsumer.flush(dataCubesConfig);
+      // TODO: catch missing DV fields here?  else we have
+      // null/"" depending on how docs landed in segments?
+      // but we can't detect all cases, and we should leave
+      // this behavior undefined. dv is not "schemaless": it's column-stride.
+      success = true;
+    } finally {
+      if (success) {
+        IOUtils.close(dataCubeDocValuesConsumer);
+      } else {
+        IOUtils.closeWhileHandlingException(dataCubeDocValuesConsumer);
+      }
+    }
+
+    if (state.fieldInfos.hasDocValues() == false) {
+      if (dataCubeDocValuesConsumer != null) {
+        // BUG
+        throw new AssertionError(
+            "segment=" + state.segmentInfo + ": fieldInfos has no docValues but wrote them");
+      }
+    } else if (dataCubeDocValuesConsumer == null) {
       // BUG
       throw new AssertionError(
           "segment=" + state.segmentInfo + ": fieldInfos has docValues but did not wrote them");

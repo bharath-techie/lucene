@@ -168,7 +168,8 @@ final class DocumentsWriterPerThread implements Accountable {
             Collections.emptyMap(),
             StringHelper.randomId(),
             Collections.emptyMap(),
-            indexWriterConfig.getIndexSort());
+            indexWriterConfig.getIndexSort(),
+            indexWriterConfig.getDataCubesConfig());
     assert numDocsInRAM == 0;
     if (INFO_VERBOSE && infoStream.isEnabled("DWPT")) {
       infoStream.message(

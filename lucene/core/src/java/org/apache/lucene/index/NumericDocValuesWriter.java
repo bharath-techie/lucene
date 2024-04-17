@@ -29,7 +29,7 @@ import org.apache.lucene.util.packed.PackedInts;
 import org.apache.lucene.util.packed.PackedLongValues;
 
 /** Buffers up pending long per doc, then flushes when segment flushes. */
-class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
+public class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
 
   private final PackedLongValues.Builder pending;
   private PackedLongValues finalValues;
@@ -39,7 +39,7 @@ class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
   private final FieldInfo fieldInfo;
   private int lastDocID = -1;
 
-  NumericDocValuesWriter(FieldInfo fieldInfo, Counter iwBytesUsed) {
+  public NumericDocValuesWriter(FieldInfo fieldInfo, Counter iwBytesUsed) {
     pending = PackedLongValues.deltaPackedBuilder(PackedInts.COMPACT);
     docsWithField = new DocsWithFieldSet();
     bytesUsed = pending.ramBytesUsed() + docsWithField.ramBytesUsed();
@@ -71,7 +71,7 @@ class NumericDocValuesWriter extends DocValuesWriter<NumericDocValues> {
   }
 
   @Override
-  NumericDocValues getDocValues() {
+  public NumericDocValues getDocValues() {
     if (finalValues == null) {
       finalValues = pending.build();
     }

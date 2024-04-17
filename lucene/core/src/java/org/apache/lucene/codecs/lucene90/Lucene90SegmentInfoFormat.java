@@ -22,6 +22,9 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.SegmentInfoFormat;
+import org.apache.lucene.index.DataCubesConfig;
+import org.apache.lucene.index.DataCubeFieldProvider;
+import org.apache.lucene.index.DataCubeField;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexSorter;
@@ -156,6 +159,21 @@ public class Lucene90SegmentInfoFormat extends SegmentInfoFormat {
       indexSort = null;
     }
 
+    int numCompositeFields = input.readVInt();
+    DataCubesConfig compositeConfig;
+    if(numCompositeFields > 0 ) {
+      DataCubeField[] compositeIndexFields = new DataCubeField[numCompositeFields];
+      for (int i = 0; i < numCompositeFields; i++) {
+        String name = input.readString();
+        compositeIndexFields[i] = DataCubeFieldProvider.forName(name).readDataCubeField(input);
+      }
+      compositeConfig = new DataCubesConfig(compositeIndexFields);
+    } else if (numCompositeFields < 0) {
+      throw new CorruptIndexException("invalid composite field count: " + numCompositeFields, input);
+    } else {
+      compositeConfig = null;
+    }
+
     SegmentInfo si =
         new SegmentInfo(
             dir,
@@ -168,7 +186,9 @@ public class Lucene90SegmentInfoFormat extends SegmentInfoFormat {
             diagnostics,
             segmentID,
             attributes,
-            indexSort);
+            indexSort,
+            compositeConfig
+            );
     si.setFiles(files);
     return si;
   }
@@ -236,6 +256,15 @@ public class Lucene90SegmentInfoFormat extends SegmentInfoFormat {
       }
       output.writeString(sorter.getProviderName());
       SortFieldProvider.write(sortField, output);
+    }
+
+    DataCubesConfig compositeConfig = si.getDataCubesConfig();
+    int numCompositeFields = compositeConfig == null ? 0 : compositeConfig.getFields().length;
+    output.writeVInt(numCompositeFields);
+    for(int i = 0; i < numCompositeFields; ++i) {
+      DataCubeField compositeIndexField = compositeConfig.getFields()[i];
+      output.writeString(compositeIndexField.getProviderName());
+      DataCubeFieldProvider.write(compositeIndexField, output);
     }
   }
 }

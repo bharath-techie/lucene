@@ -18,6 +18,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Objects;
+import org.apache.lucene.codecs.DataCubesProducer;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.KnnVectorsReader;
@@ -117,6 +118,11 @@ public abstract class FilterCodecReader extends CodecReader {
   }
 
   @Override
+  public DataCubesProducer<?> getDataCubesReader() {
+    return in.getDataCubesReader();
+  }
+
+  @Override
   public int numDocs() {
     return in.numDocs();
   }
@@ -149,6 +155,7 @@ public abstract class FilterCodecReader extends CodecReader {
   /** Returns a filtered codec reader with the given live docs and numDocs. */
   static FilterCodecReader wrapLiveDocs(CodecReader reader, Bits liveDocs, int numDocs) {
     return new FilterCodecReader(reader) {
+
       @Override
       public CacheHelper getCoreCacheHelper() {
         return reader.getCoreCacheHelper();

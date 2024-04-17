@@ -67,6 +67,12 @@ public class TestSegmentToThreadMapping extends LuceneTestCase {
       }
 
       @Override
+      public Object getAggregatedDocValues()
+          throws IOException {
+        return null;
+      }
+
+      @Override
       public Fields getTermVectors(int doc) {
         return null;
       }
@@ -88,6 +94,12 @@ public class TestSegmentToThreadMapping extends LuceneTestCase {
 
       @Override
       public SortedDocValues getSortedDocValues(String field) {
+        return null;
+      }
+
+      @Override
+      public DataCubeValues<?> getDataCubeValues(String field)
+          throws IOException {
         return null;
       }
 

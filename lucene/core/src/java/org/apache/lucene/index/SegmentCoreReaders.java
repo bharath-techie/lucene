@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.DataCubesProducer;
 import org.apache.lucene.codecs.CompoundDirectory;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.KnnVectorsReader;
@@ -61,6 +62,7 @@ final class SegmentCoreReaders {
   final PointsReader pointsReader;
   final KnnVectorsReader knnVectorsReader;
   final CompoundDirectory cfsReader;
+  final DataCubesProducer<?> dataCubesReader;
   final String segment;
   /**
    * fieldinfos for this core: means gen=-1. this is the exact fieldinfos these codec components saw
@@ -159,6 +161,12 @@ final class SegmentCoreReaders {
         knnVectorsReader = null;
       }
 
+      if (si.info.getDataCubesConfig() != null) {
+        dataCubesReader = codec.dataCubesFormat().fieldsProducer(segmentReadState);
+      } else {
+        dataCubesReader = null;
+      }
+
       success = true;
     } catch (EOFException | FileNotFoundException e) {
       throw new CorruptIndexException("Problem reading index from " + dir, dir.toString(), e);
@@ -198,7 +206,7 @@ final class SegmentCoreReaders {
             cfsReader,
             normsProducer,
             pointsReader,
-            knnVectorsReader);
+            knnVectorsReader, dataCubesReader);
       }
     }
   }
