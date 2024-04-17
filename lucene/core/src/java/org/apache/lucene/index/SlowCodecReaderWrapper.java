@@ -21,6 +21,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import org.apache.lucene.codecs.CompositeValuesReader;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.KnnVectorsReader;
@@ -82,6 +83,12 @@ public final class SlowCodecReaderWrapper {
         public KnnVectorsReader getVectorReader() {
           reader.ensureOpen();
           return readerToVectorReader(reader);
+        }
+
+        @Override
+        public CompositeValuesReader<?> getCompositeValuesReader() {
+          reader.ensureOpen();
+          return readerToCompositeReader(reader);
         }
 
         @Override
@@ -195,6 +202,30 @@ public final class SlowCodecReaderWrapper {
       @Override
       public long ramBytesUsed() {
         return 0L;
+      }
+    };
+  }
+
+  private static CompositeValuesReader<Object> readerToCompositeReader(final LeafReader reader) {
+    return new CompositeValuesReader<>() {
+      @Override
+      public void checkIntegrity()
+          throws IOException {
+
+      }
+
+      @Override
+      public CompositeValues<?> getCompositeFieldValues(String field)
+          throws IOException {
+        // TODO : change this
+        //return reader.getAggregatedDocValues();
+        return reader.getCompositeValues(field);
+      }
+
+      @Override
+      public void close()
+          throws IOException {
+
       }
     };
   }

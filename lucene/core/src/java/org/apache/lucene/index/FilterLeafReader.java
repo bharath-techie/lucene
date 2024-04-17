@@ -449,6 +449,13 @@ public abstract class FilterLeafReader extends LeafReader {
   }
 
   @Override
+  public CompositeValues<?> getCompositeValues(String field)
+      throws IOException {
+    ensureOpen();
+    return in.getCompositeValues(field);
+  }
+
+  @Override
   public SortedNumericDocValues getSortedNumericDocValues(String field) throws IOException {
     ensureOpen();
     return in.getSortedNumericDocValues(field);

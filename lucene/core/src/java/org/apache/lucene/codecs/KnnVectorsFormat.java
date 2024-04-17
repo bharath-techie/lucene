@@ -30,7 +30,7 @@ import org.apache.lucene.util.NamedSPILoader;
  * Encodes/decodes per-document vector and any associated indexing structures required to support
  * nearest-neighbor search
  */
-public abstract class KnnVectorsFormat implements NamedSPILoader.NamedSPI {
+public abstract class  KnnVectorsFormat implements NamedSPILoader.NamedSPI {
 
   /**
    * This static holder class prevents classloading deadlock by delaying init of doc values formats

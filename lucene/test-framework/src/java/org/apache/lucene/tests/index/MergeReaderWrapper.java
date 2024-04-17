@@ -27,6 +27,7 @@ import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.ByteVectorValues;
 import org.apache.lucene.index.CodecReader;
+import org.apache.lucene.index.CompositeValues;
 import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
@@ -147,6 +148,12 @@ class MergeReaderWrapper extends LeafReader {
       return null;
     }
     return docValues.getSorted(fi);
+  }
+
+  @Override
+  public CompositeValues<?> getCompositeValues(String field)
+      throws IOException {
+    return in.getCompositeValues(field);
   }
 
   @Override

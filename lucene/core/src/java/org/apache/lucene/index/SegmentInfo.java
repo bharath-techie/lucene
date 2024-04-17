@@ -68,6 +68,8 @@ public final class SegmentInfo {
 
   private final Sort indexSort;
 
+  private final CompositeConfig compositeConfig;
+
   // Tracks the Lucene version this segment was created with, since 3.1. Null
   // indicates an older than 3.0 index, and it's used to detect a too old index.
   // The format expected is "x.y" - "2.x" for pre-3.0 indexes (or null), and
@@ -121,7 +123,8 @@ public final class SegmentInfo {
       Map<String, String> diagnostics,
       byte[] id,
       Map<String, String> attributes,
-      Sort indexSort) {
+      Sort indexSort,
+      CompositeConfig compositeConfig) {
     assert !(dir instanceof TrackingDirectoryWrapper);
     this.dir = Objects.requireNonNull(dir);
     this.version = Objects.requireNonNull(version);
@@ -132,11 +135,28 @@ public final class SegmentInfo {
     this.codec = codec;
     this.diagnostics = Map.copyOf(Objects.requireNonNull(diagnostics));
     this.id = id;
+    this.compositeConfig = compositeConfig;
     if (id.length != StringHelper.ID_LENGTH) {
       throw new IllegalArgumentException("invalid id: " + Arrays.toString(id));
     }
     this.attributes = Map.copyOf(Objects.requireNonNull(attributes));
     this.indexSort = indexSort;
+  }
+
+  public SegmentInfo(
+      Directory dir,
+      Version version,
+      Version minVersion,
+      String name,
+      int maxDoc,
+      boolean isCompoundFile,
+      Codec codec,
+      Map<String, String> diagnostics,
+      byte[] id,
+      Map<String, String> attributes,
+      Sort indexSort) {
+    this(dir, version, minVersion, name, maxDoc, isCompoundFile,
+        codec, diagnostics, id, attributes, indexSort, null);
   }
 
   /**
@@ -151,6 +171,10 @@ public final class SegmentInfo {
   /** Returns true if this segment is stored as a compound file; else, false. */
   public boolean getUseCompoundFile() {
     return isCompoundFile;
+  }
+
+  public CompositeConfig getCompositeConfig() {
+    return compositeConfig;
   }
 
   /** Can only be called once. */

@@ -18,6 +18,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Objects;
+import org.apache.lucene.codecs.CompositeValuesReader;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.KnnVectorsReader;
@@ -82,6 +83,8 @@ public abstract class CodecReader extends LeafReader {
    * @lucene.internal
    */
   public abstract KnnVectorsReader getVectorReader();
+
+  public abstract CompositeValuesReader<?> getCompositeValuesReader();
 
   // intentionally throw UOE for deprecated APIs: keep CodecReader clean!
   // (IndexWriter should not be triggering threadlocals in any way)
@@ -185,7 +188,14 @@ public abstract class CodecReader extends LeafReader {
 
   @Override
   public final Object getAggregatedDocValues() throws IOException {
-    return getDocValuesReader().getAggregatedDocValues();
+    return getCompositeValuesReader().getCompositeFieldValues("field-name-placeholder");
+    //return getDocValuesReader().getAggregatedDocValues();
+  }
+
+  @Override
+  public CompositeValues<?> getCompositeValues(String field) throws IOException {
+    ensureOpen();
+    return getCompositeValuesReader().getCompositeFieldValues(field);
   }
 
   @Override

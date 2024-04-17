@@ -406,6 +406,12 @@ public class ParallelLeafReader extends LeafReader {
   }
 
   @Override
+  public CompositeValues<?> getCompositeValues(String field)
+      throws IOException {
+    return null;
+  }
+
+  @Override
   public Object getAggregatedDocValues()
       throws IOException {
     return null;
