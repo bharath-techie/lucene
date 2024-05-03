@@ -3,10 +3,14 @@ package org.apache.lucene.codecs.example;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.lucene.codecs.DataCubesProducer;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.lucene90.Lucene90DocValuesConsumer;
+import org.apache.lucene.index.DataCubeField;
 import org.apache.lucene.index.DataCubesConfig;
 import org.apache.lucene.index.DataCubeDocValuesConsumer;
 import org.apache.lucene.index.DataCubeValues;
@@ -63,99 +67,6 @@ public class ExampleDataCubeDocValuesConsumer extends DataCubeDocValuesConsumer 
 
     createDocValuesConsumer.close();
 
-  }
-
-  private void createDataCubeFields(DataCubesConfig dataCubesConfig)
-      throws IOException {
-    int fieldNum = 0;
-    StarTreeConfig config = (StarTreeConfig) dataCubesConfig;
-    for(StarTreeField field : config.getFields()) {
-      List<SortedNumericDocValuesWriter> dimWriterList = new ArrayList<>();
-      List<SortedNumericDocValuesWriter> metricWriterList = new ArrayList<>();
-      List<SortedSetDocValuesWriter> keywordWriterList = new ArrayList<>();
-      FieldInfo[] dimFieldInfoArr = new FieldInfo[field.getDims().size()];
-      FieldInfo[] metricFieldInfoArr = new FieldInfo[field.getMetrics().size()];
-      int i = 0;
-      for(String dim : field.getDims()) {
-        final FieldInfo fi = new FieldInfo(dim + "_dim", fieldNum, false, false, true,
-            IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS, DocValuesType.SORTED_NUMERIC, -1, Collections.emptyMap(),
-            0, 0, 0, 0, VectorEncoding.FLOAT32, VectorSimilarityFunction.EUCLIDEAN, false);
-        dimFieldInfoArr[i] = fi;
-        final SortedNumericDocValuesWriter w = new SortedNumericDocValuesWriter(fi, Counter.newCounter());
-        dimWriterList.add(w);
-        fieldNum++;
-        i++;
-      }
-      i=0;
-      for(String metric : field.getMetrics()) {
-
-        final FieldInfo fi = new FieldInfo(metric, fieldNum, false, false, true,
-            IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS, DocValuesType.SORTED_NUMERIC, -1, Collections.emptyMap(),
-            0, 0, 0, 0, VectorEncoding.FLOAT32, VectorSimilarityFunction.EUCLIDEAN, false);
-        metricFieldInfoArr[i] = fi;
-        final SortedNumericDocValuesWriter w = new SortedNumericDocValuesWriter(fi, Counter.newCounter());
-        metricWriterList.add(w);
-        fieldNum++;
-        i++;
-      }
-
-      int dimIndex = 0;
-      for(String dim : (field.getDims())) {
-        SortedNumericDocValues values = DocValues.singleton(getNumericDocValuesMap().get(dim));
-        int docID;
-        while ((docID = values.nextDoc()) != NO_MORE_DOCS) {
-          final int count = values.docValueCount();
-          for (i = 0; i < count; ++i) {
-            final long v = values.nextValue();
-            dimWriterList.get(dimIndex).addValue(docID, v);
-          }
-        }
-        dimIndex++;
-      }
-
-      int metricIndex = 0;
-      for(String metric : field.getMetrics()){
-        SortedNumericDocValues values = DocValues.singleton(getNumericDocValuesMap().get(metric));
-        int docID;
-        while ((docID = values.nextDoc()) != NO_MORE_DOCS) {
-          final int count = values.docValueCount();
-          for (i = 0; i < count; ++i) {
-            final long v = values.nextValue();
-            metricWriterList.get(metricIndex).addValue(docID, v);
-          }
-        }
-        metricIndex++;
-      }
-
-      int k = 0;
-      for (i = 0; i < field.getDims().size() ; i++) {
-        final int finalI = k;
-        DocValuesProducer producer1 = new EmptyDocValuesProducer() {
-          @Override
-          public SortedNumericDocValues getSortedNumeric(FieldInfo field)
-              throws IOException {
-
-            return dimWriterList.get(finalI).getDocValues();
-          }
-        };
-        createDocValuesConsumer.addSortedNumericField(dimFieldInfoArr[i], producer1);
-        k++;
-      }
-      k=0;
-      for (i = 0; i < field.getMetrics().size() ; i++) {
-        final int finalI = k;
-        DocValuesProducer producer1 = new EmptyDocValuesProducer() {
-          @Override
-          public SortedNumericDocValues getSortedNumeric(FieldInfo field)
-              throws IOException {
-
-            return metricWriterList.get(finalI).getDocValues();
-          }
-        };
-        createDocValuesConsumer.addSortedNumericField(metricFieldInfoArr[i], producer1);
-        k++;
-      }
-    }
   }
 
   private void createDataCubeNumericFields(DataCubesConfig dataCubesConfig)
@@ -256,15 +167,26 @@ public class ExampleDataCubeDocValuesConsumer extends DataCubeDocValuesConsumer 
     super.merge(mergeState);
     List<StarTreeAggregatedValues> aggrList = new ArrayList<>();
     List<String> dimNames = new ArrayList<>();
+    for(DataCubeField dataCubeField : mergeState.segmentInfo.getDataCubesConfig().getFields()) {
+        merge(dataCubeField, mergeState);
+    }
+  }
+
+  private void merge(DataCubeField dataCubeField, MergeState mergeState) throws IOException {
+    Map<String, List<NumericDocValuesSub>> metricsSubs = new HashMap<>();
     for (int i = 0; i < mergeState.dataCubesReaders.length; i++) {
       DataCubesProducer<?> producer = mergeState.dataCubesReaders[i];
       @SuppressWarnings("unchecked")
       DataCubeValues<StarTreeAggregatedValues> starTree =
-          (DataCubeValues<StarTreeAggregatedValues>) producer.getDataCubeValues("field_place_holder");
+          (DataCubeValues<StarTreeAggregatedValues>) producer.getDataCubeValues(dataCubeField.getName());
+      for(Map.Entry<String, NumericDocValues> entry : starTree.getDataCubeValues().metricValues.entrySet()) {
+        if(!metricsSubs.containsKey(entry.getKey())) {
+          metricsSubs.put(entry.getKey(), new ArrayList<>());
+        }
+        metricsSubs.get(entry.getKey()).add(new NumericDocValuesSub(mergeState.docMaps[i], entry.getValue()));
+      }
     }
-    long startTime = System.currentTimeMillis();
-    // fix this
-    // TODO : han
+
   }
 
 

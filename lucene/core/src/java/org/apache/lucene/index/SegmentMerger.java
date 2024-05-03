@@ -158,11 +158,25 @@ final class SegmentMerger {
       mergeWithLogging(this::mergeTermVectors, "term vectors");
     }
 
+    if (mergeState.segmentInfo.getDataCubesConfig() != null) {
+      mergeWithLogging(
+          this::mergeDataCubes, segmentWriteState, segmentReadState, "data cubes", numMerged);
+    }
+
     // write the merged infos
     mergeWithLogging(
         this::mergeFieldInfos, segmentWriteState, segmentReadState, "field infos", numMerged);
 
     return mergeState;
+  }
+
+  private void mergeDataCubes(SegmentWriteState segmentWriteState, SegmentReadState segmentReadState) throws IOException {
+    try (DataCubeDocValuesConsumer consumer =
+        codec
+            .dataCubesFormat()
+            .fieldsConsumer(segmentWriteState, mergeState.segmentInfo.getDataCubesConfig())) {
+      consumer.merge(mergeState);
+    }
   }
 
   private void mergeFieldInfos(

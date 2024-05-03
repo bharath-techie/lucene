@@ -164,7 +164,7 @@ public abstract class DocValuesConsumer implements Closeable {
   }
 
   /** Tracks state of one numeric sub-reader that we are merging */
-  private static class NumericDocValuesSub extends DocIDMerger.Sub {
+  public static class NumericDocValuesSub extends DocIDMerger.Sub {
 
     final NumericDocValues values;
 

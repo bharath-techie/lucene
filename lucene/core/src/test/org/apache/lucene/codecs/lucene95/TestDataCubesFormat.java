@@ -52,6 +52,10 @@ public class TestDataCubesFormat extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(dir, c);
 
     add(writer);
+    writer.flush();
+    add(writer);
+    writer.flush();
+    writer.forceMerge(1);
     writer.commit();
     //writer.close();
 
