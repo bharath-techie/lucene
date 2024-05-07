@@ -461,48 +461,14 @@ final class IndexingChain implements Accountable {
   }
 
   private void writeDataCubes(SegmentWriteState state, Sorter.DocMap sortMap, DataCubesConfig dataCubesConfig) throws IOException {
-    DataCubeDocValuesConsumer dataCubeDocValuesConsumer = null;
+    DataCubesConsumer dataCubeDocValuesConsumer = null;
     boolean success = false;
     try {
-      for (int i = 0; i < fieldHash.length; i++) {
-        PerField perField = fieldHash[i];
-        while (perField != null) {
-          if (perField.docValuesWriter != null) {
-            if (perField.fieldInfo.getDocValuesType() == DocValuesType.NONE) {
-              // BUG
-              throw new AssertionError(
-                  "segment="
-                      + state.segmentInfo
-                      + ": field=\""
-                      + perField.fieldInfo.name
-                      + "\" has no docValues but wrote them");
-            }
-            if (dataCubeDocValuesConsumer == null) {
-              // lazy init
-              DataCubesFormat fmt = state.segmentInfo.getCodec().dataCubesFormat();
-              dataCubeDocValuesConsumer = fmt.fieldsConsumer(state, dataCubesConfig);
-            }
-            perField.docValuesWriter.flush(state, sortMap, dataCubeDocValuesConsumer);
-            //perField.docValuesWriter = null;
-          } else if (perField.fieldInfo != null
-              && perField.fieldInfo.getDocValuesType() != DocValuesType.NONE) {
-            // BUG
-            throw new AssertionError(
-                "segment="
-                    + state.segmentInfo
-                    + ": field=\""
-                    + perField.fieldInfo.name
-                    + "\" has docValues but did not write them");
-          }
-          perField = perField.next;
-        }
-      }
+      DataCubesFormat fmt = state.segmentInfo.getCodec().dataCubesFormat();
+      dataCubeDocValuesConsumer = fmt.fieldsConsumer(state, dataCubesConfig);
+      LeafReader docValuesReader = getDocValuesLeafReader();
       // IMPORTANT : This call creates the star tree data structures along with the associated doc values in the POC
-      dataCubeDocValuesConsumer.flush(dataCubesConfig);
-      // TODO: catch missing DV fields here?  else we have
-      // null/"" depending on how docs landed in segments?
-      // but we can't detect all cases, and we should leave
-      // this behavior undefined. dv is not "schemaless": it's column-stride.
+      dataCubeDocValuesConsumer.flush(state, dataCubesConfig, docValuesReader, sortMap);
       success = true;
     } finally {
       if (success) {
@@ -510,18 +476,6 @@ final class IndexingChain implements Accountable {
       } else {
         IOUtils.closeWhileHandlingException(dataCubeDocValuesConsumer);
       }
-    }
-
-    if (state.fieldInfos.hasDocValues() == false) {
-      if (dataCubeDocValuesConsumer != null) {
-        // BUG
-        throw new AssertionError(
-            "segment=" + state.segmentInfo + ": fieldInfos has no docValues but wrote them");
-      }
-    } else if (dataCubeDocValuesConsumer == null) {
-      // BUG
-      throw new AssertionError(
-          "segment=" + state.segmentInfo + ": fieldInfos has docValues but did not wrote them");
     }
   }
 

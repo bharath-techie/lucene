@@ -219,7 +219,7 @@ public abstract class DocValuesConsumer implements Closeable {
         });
   }
 
-  private static NumericDocValues mergeNumericValues(
+  public static NumericDocValues mergeNumericValues(
       List<NumericDocValuesSub> subs, boolean indexIsSorted) throws IOException {
     long cost = 0;
     for (NumericDocValuesSub sub : subs) {

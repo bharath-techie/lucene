@@ -4,7 +4,7 @@ import java.io.IOException;
 import org.apache.lucene.codecs.DataCubesFormat;
 import org.apache.lucene.codecs.DataCubesProducer;
 import org.apache.lucene.index.DataCubesConfig;
-import org.apache.lucene.index.DataCubeDocValuesConsumer;
+import org.apache.lucene.index.DataCubesConsumer;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 
@@ -22,7 +22,7 @@ public class ExampleDataCubesFormat extends DataCubesFormat {
   }
 
   @Override
-  public DataCubeDocValuesConsumer fieldsConsumer(SegmentWriteState state, DataCubesConfig compositeConfig)
+  public DataCubesConsumer fieldsConsumer(SegmentWriteState state, DataCubesConfig compositeConfig)
       throws IOException {
     return new ExampleDataCubeDocValuesConsumer( state, DATA_CODEC, "sttd", META_CODEC, "sttd");
   }
