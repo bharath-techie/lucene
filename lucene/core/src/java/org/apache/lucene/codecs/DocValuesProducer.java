@@ -27,6 +27,7 @@ import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * Abstract API that produces numeric, binary, sorted, sortedset, and sortednumeric docvalues.
@@ -101,4 +102,6 @@ public abstract class DocValuesProducer implements Closeable {
   public DocValuesProducer getMergeInstance() {
     return this;
   }
+
+  public abstract RangeBitmap getRangeBitmap() throws IOException;
 }

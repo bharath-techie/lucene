@@ -521,6 +521,7 @@ public class BKDWriter implements Closeable {
     final int numLeaves =
         Math.toIntExact(
             (pointCount + config.maxPointsInLeafNode() - 1) / config.maxPointsInLeafNode());
+    //System.out.println("numLeaves : " + numLeaves);
     final int numSplits = numLeaves - 1;
 
     checkMaxLeafNodeCount(numLeaves);
@@ -776,6 +777,7 @@ public class BKDWriter implements Closeable {
 
     private void writeLeafBlock(int leafCardinality) throws IOException {
       assert leafCount != 0;
+      //System.out.println("Leaf count : " + leafCount);
       if (valueCount == 0) {
         System.arraycopy(leafValues, 0, minPackedValue, 0, config.packedIndexBytesLength());
       }
@@ -1292,6 +1294,7 @@ public class BKDWriter implements Closeable {
       int compressedByteOffset = sortedDim * config.bytesPerDim() + commonPrefixLengths[sortedDim];
       int highCardinalityCost;
       int lowCardinalityCost;
+      //System.out.println(leafCardinality + " " + count);
       if (count == leafCardinality) {
         // all values in this block are different
         highCardinalityCost = 0;
@@ -1312,6 +1315,7 @@ public class BKDWriter implements Closeable {
         // +1 is the byte needed for storing the cardinality
         lowCardinalityCost = leafCardinality * (config.packedBytesLength() - prefixLenSum + 1);
       }
+      //System.out.println(" LC cost : " + lowCardinalityCost + " --- HC cost : " + highCardinalityCost);
       if (lowCardinalityCost <= highCardinalityCost) {
         out.writeByte((byte) -2);
         writeLowCardinalityLeafBlockPackedValues(out, commonPrefixLengths, count, packedValues);
@@ -1326,6 +1330,7 @@ public class BKDWriter implements Closeable {
   private void writeLowCardinalityLeafBlockPackedValues(
       DataOutput out, int[] commonPrefixLengths, int count, IntFunction<BytesRef> packedValues)
       throws IOException {
+    System.out.println("Low card");
     if (config.numIndexDims() != 1) {
       writeActualBounds(out, commonPrefixLengths, count, packedValues);
     }

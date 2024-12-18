@@ -40,6 +40,7 @@ import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.internal.hppc.IntObjectHashMap;
 import org.apache.lucene.util.IOUtils;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * Enables per field docvalues support.
@@ -355,7 +356,16 @@ public abstract class PerFieldDocValuesFormat extends DocValuesFormat {
     public void close() throws IOException {
       IOUtils.close(formats.values());
     }
-
+    @Override
+    public RangeBitmap getRangeBitmap() throws IOException {
+      for(Object producer : fields.values) {
+        if (producer != null) {
+          return ((DocValuesProducer) producer).getRangeBitmap();
+        }
+      }
+      DocValuesProducer producer = fields.get(0);
+      return producer == null ? null : producer.getRangeBitmap();
+    }
     @Override
     public void checkIntegrity() throws IOException {
       for (DocValuesProducer format : formats.values()) {

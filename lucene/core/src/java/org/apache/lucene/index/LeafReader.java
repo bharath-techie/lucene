@@ -24,6 +24,7 @@ import org.apache.lucene.search.TopDocsCollector;
 import org.apache.lucene.search.TopKnnCollector;
 import org.apache.lucene.search.TotalHits;
 import org.apache.lucene.util.Bits;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * {@code LeafReader} is an abstract class, providing an interface for accessing an index. Search of
@@ -208,6 +209,8 @@ public abstract non-sealed class LeafReader extends IndexReader {
    * confined to the thread that created it.
    */
   public abstract DocValuesSkipper getDocValuesSkipper(String field) throws IOException;
+
+  public abstract RangeBitmap getRangeBitMap() throws IOException;
 
   /**
    * Returns {@link FloatVectorValues} for this field, or null if no {@link FloatVectorValues} were

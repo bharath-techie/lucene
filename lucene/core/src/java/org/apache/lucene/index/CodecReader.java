@@ -27,6 +27,7 @@ import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.search.KnnCollector;
 import org.apache.lucene.util.Bits;
+import org.roaringbitmap.RangeBitmap;
 
 /** LeafReader implemented by codec APIs. */
 public abstract class CodecReader extends LeafReader {
@@ -156,6 +157,13 @@ public abstract class CodecReader extends LeafReader {
   }
 
   @Override
+  public final RangeBitmap getRangeBitMap() throws IOException {
+    ensureOpen();
+    return getDocValuesReader().getRangeBitmap();
+  }
+
+
+  @Override
   public final BinaryDocValues getBinaryDocValues(String field) throws IOException {
     ensureOpen();
     FieldInfo fi = getDVField(field, DocValuesType.BINARY);
@@ -229,6 +237,7 @@ public abstract class CodecReader extends LeafReader {
 
     return getPointsReader().getValues(field);
   }
+
 
   @Override
   public final FloatVectorValues getFloatVectorValues(String field) throws IOException {

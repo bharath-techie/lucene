@@ -19,6 +19,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import org.apache.lucene.codecs.DocValuesProducer;
+import org.roaringbitmap.RangeBitmap;
 
 /** Abstract base class implementing a {@link DocValuesProducer} that has no doc values. */
 public abstract class EmptyDocValuesProducer extends DocValuesProducer {
@@ -48,6 +49,11 @@ public abstract class EmptyDocValuesProducer extends DocValuesProducer {
 
   @Override
   public SortedSetDocValues getSortedSet(FieldInfo field) throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public RangeBitmap getRangeBitmap() {
     throw new UnsupportedOperationException();
   }
 

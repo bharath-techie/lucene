@@ -22,8 +22,9 @@ module org.apache.lucene.test_framework {
   requires org.apache.lucene.codecs;
   requires transitive junit;
   requires transitive randomizedtesting.runner;
+    requires roaringbitmap;
 
-  // Open certain packages for junit because it scans methods via reflection.
+    // Open certain packages for junit because it scans methods via reflection.
   opens org.apache.lucene.tests.index to
       junit;
 

@@ -42,6 +42,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOSupplier;
 import org.apache.lucene.util.packed.PackedInts;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * An {@link org.apache.lucene.index.CodecReader} which supports sorting documents by a given {@link
@@ -614,6 +615,10 @@ public final class SortingCodecReader extends FilterCodecReader {
       public NumericDocValues getNumeric(FieldInfo field) throws IOException {
         return new NumericDocValuesWriter.SortingNumericDocValues(
             getOrCreateDV(field.name, () -> getNumericDocValues(delegate.getNumeric(field))));
+      }
+      @Override
+      public RangeBitmap getRangeBitmap() {
+        throw new UnsupportedOperationException();
       }
 
       @Override

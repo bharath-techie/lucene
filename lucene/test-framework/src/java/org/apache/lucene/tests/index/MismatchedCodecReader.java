@@ -33,6 +33,7 @@ import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.StoredFieldVisitor;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * Shuffles field numbers around to try to trip bugs where field numbers are assumed to always be
@@ -128,7 +129,10 @@ public class MismatchedCodecReader extends FilterCodecReader {
     public void close() throws IOException {
       in.close();
     }
-
+    @Override
+    public RangeBitmap getRangeBitmap() {
+      throw new UnsupportedOperationException();
+    }
     private FieldInfo remapFieldInfo(FieldInfo field) {
       FieldInfo fi = shuffled.fieldInfo(field.name);
       assert fi != null && fi.number == field.number;

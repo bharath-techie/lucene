@@ -62,6 +62,7 @@ import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.IntBlockPool;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.Version;
+import org.roaringbitmap.RangeBitmap;
 
 /** Default general purpose indexing chain, which handles indexing all types of fields. */
 final class IndexingChain implements Accountable {
@@ -207,6 +208,11 @@ final class IndexingChain implements Accountable {
         if (pf.fieldInfo.getDocValuesType() == DocValuesType.SORTED_SET) {
           return (SortedSetDocValues) pf.docValuesWriter.getDocValues();
         }
+        return null;
+      }
+
+      @Override
+      public RangeBitmap getRangeBitMap() {
         return null;
       }
 
@@ -985,6 +991,11 @@ final class IndexingChain implements Accountable {
                         + "]");
               }
               return DocValues.emptySortedSet();
+            }
+
+            @Override
+            public RangeBitmap getRangeBitMap() {
+              return null;
             }
 
             @Override

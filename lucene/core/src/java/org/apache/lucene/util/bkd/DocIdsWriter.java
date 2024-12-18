@@ -18,6 +18,11 @@ package org.apache.lucene.util.bkd;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
+
 import org.apache.lucene.index.PointValues.IntersectVisitor;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.DataOutput;
@@ -27,6 +32,7 @@ import org.apache.lucene.util.DocBaseBitSetIterator;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.LongsRef;
+import org.roaringbitmap.RoaringBitmap;
 
 final class DocIdsWriter {
 
@@ -35,6 +41,7 @@ final class DocIdsWriter {
   private static final byte DELTA_BPV_16 = (byte) 16;
   private static final byte BPV_24 = (byte) 24;
   private static final byte BPV_32 = (byte) 32;
+  private static final byte ROARING_BITMAP = 6; // New format identifier
   // These signs are legacy, should no longer be used in the writing side.
   private static final byte LEGACY_DELTA_VINT = (byte) 0;
 
@@ -94,8 +101,16 @@ final class DocIdsWriter {
         return;
       }
     }
+// Check if Roaring Bitmap would be beneficial
+    if (shouldUseRoaringBitmap(min, max, count)) {
+      System.out.println("roaring bitmap");
+      writeRoaringBitmap(docIds, start, count, min, max, out);
+      return;
+    }
+
 
     if (min2max <= 0xFFFF) {
+      System.out.println("bpv 16");
       out.writeByte(DELTA_BPV_16);
       for (int i = 0; i < count; i++) {
         scratch[i] = docIds[start + i] - min;
@@ -113,6 +128,7 @@ final class DocIdsWriter {
       }
     } else {
       if (max <= 0xFFFFFF) {
+        System.out.println("bpv 24");
         out.writeByte(BPV_24);
         // write them the same way we are reading them.
         int i;
@@ -141,6 +157,7 @@ final class DocIdsWriter {
           out.writeByte((byte) docIds[start + i]);
         }
       } else {
+        System.out.println("bpv 32");
         out.writeByte(BPV_32);
         for (int i = 0; i < count; i++) {
           out.writeInt(docIds[start + i]);
@@ -149,6 +166,76 @@ final class DocIdsWriter {
     }
   }
 
+  private boolean shouldUseRoaringBitmap(int min, int max, int count) {
+    // Heuristic to decide when to use Roaring Bitmap
+    long range = (long)max - min;
+    double density = count / (double)range;
+
+    // Use Roaring Bitmap when:
+    // 1. Range is large enough
+    // 2. Density is neither too high nor too low
+    return range > 4096 && density > 0.01 && density < 0.7;
+  }
+
+  private void writeRoaringBitmap(int[] docIds, int start, int count, int min, int max, DataOutput out) throws IOException {
+    out.writeByte(ROARING_BITMAP);
+    out.writeVInt(count);
+
+
+    // Group by high bits (container index)
+    Map<Short, BitSet> containers = new HashMap<>();
+
+    for (int i = 0; i < count; i++) {
+      int docId = docIds[start + i];
+      short high = (short)(docId >>> 16);
+      int low = (docId & 0xFFFF);
+
+      containers.computeIfAbsent(high, k -> new BitSet()).set(low);
+    }
+
+    // Write number of containers
+    out.writeVInt(containers.size());
+
+    // Write containers in sorted order
+    TreeMap<Short, BitSet> sortedContainers = new TreeMap<>(containers);
+    for (Map.Entry<Short, BitSet> entry : sortedContainers.entrySet()) {
+      out.writeShort(entry.getKey());
+      BitSet bits = entry.getValue();
+
+      // Write the bitset efficiently
+      byte[] bytes = bits.toByteArray();
+      out.writeVInt(bytes.length);
+      out.writeBytes(bytes, 0, bytes.length);
+    }
+  }
+
+  private static class Container {
+    private final BitSet values = new BitSet(1 << 16);
+    private int cardinality = 0;
+
+    void add(int value) {
+      if (!values.get(value)) {
+        values.set(value);
+        cardinality++;
+      }
+    }
+
+    void writeTo(DataOutput out) throws IOException {
+      // Choose array or bitmap representation based on cardinality
+      if (cardinality < 4096) { // Array encoding
+        out.writeByte((byte) 0); // Array type
+        out.writeVInt(cardinality);
+        for (int i = values.nextSetBit(0); i >= 0; i = values.nextSetBit(i + 1)) {
+          out.writeShort((short)i);
+        }
+      } else { // Bitmap encoding
+        out.writeByte((byte) 1); // Bitmap type
+        byte[] bytes = values.toByteArray();
+        out.writeVInt(bytes.length);
+        out.writeBytes(bytes, 0, bytes.length);
+      }
+    }
+  }
   private static void writeIdsAsBitSet(int[] docIds, int start, int count, DataOutput out)
       throws IOException {
     int min = docIds[start];
@@ -179,6 +266,7 @@ final class DocIdsWriter {
       currentWord |= 1L << index;
     }
     out.writeLong(currentWord);
+    System.out.println("writing bitset ids");
     assert currentWordIndex + 1 == totalWordCount;
   }
 
@@ -186,6 +274,9 @@ final class DocIdsWriter {
   void readInts(IndexInput in, int count, int[] docIDs) throws IOException {
     final int bpv = in.readByte();
     switch (bpv) {
+      case ROARING_BITMAP:
+        readRoaringBitmap(in, count, docIDs);
+        break;
       case CONTINUOUS_IDS:
         readContinuousIds(in, count, docIDs);
         break;
@@ -195,6 +286,8 @@ final class DocIdsWriter {
       case DELTA_BPV_16:
         readDelta16(in, count, docIDs);
         break;
+      // 4096 * 3 bytes
+      // 512 * 3 bytes * more blocks
       case BPV_24:
         readInts24(in, count, docIDs);
         break;
@@ -204,9 +297,68 @@ final class DocIdsWriter {
       case LEGACY_DELTA_VINT:
         readLegacyDeltaVInts(in, count, docIDs);
         break;
+
       default:
         throw new IOException("Unsupported number of bits per value: " + bpv);
     }
+  }
+
+  private void readRoaringBitmap(IndexInput in, int count,  int[] docIds) throws IOException {
+    int expectedCount = in.readVInt();
+    assert expectedCount == count;
+
+    int containerCount = in.readVInt();
+    int docIdIndex = 0;
+
+    // Read containers in order (they were written in sorted order)
+    for (int i = 0; i < containerCount; i++) {
+      short high = in.readShort();
+      int byteCount = in.readVInt();
+      byte[] bytes = new byte[byteCount];
+      in.readBytes(bytes, 0, byteCount);
+
+      BitSet bits = BitSet.valueOf(bytes);
+
+      // Process bits in order to maintain sorting
+      for (int bit = bits.nextSetBit(0); bit >= 0; bit = bits.nextSetBit(bit + 1)) {
+        docIds[docIdIndex++] = (high << 16) | (bit & 0xFFFF);
+      }
+    }
+
+    assert docIdIndex == count : "Read " + docIdIndex + " docs, expected " + count;
+
+    // Verify sorting (can be disabled in production)
+    assert isSorted(docIds, count) : "DocIds are not properly sorted";
+  }
+
+  private static void readRoaringBitmap(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
+    int expectedCount = in.readVInt();
+    assert expectedCount == count;
+    int containerCount = in.readVInt();
+
+    for (int i = 0; i < containerCount; i++) {
+      short high = in.readShort();
+      int byteCount = in.readVInt();
+      byte[] bytes = new byte[byteCount];
+      in.readBytes(bytes, 0, byteCount);
+
+      BitSet bits = BitSet.valueOf(bytes);
+
+      // Process bits in order to maintain sorting
+      for (int bit = bits.nextSetBit(0); bit >= 0; bit = bits.nextSetBit(bit + 1)) {
+        int docId = (high << 16) | (bit & 0xFFFF);
+        visitor.visit(docId);
+      }
+    }
+  }
+
+  private boolean isSorted(int[] array, int count) {
+    for (int i = 1; i < count; i++) {
+      if (array[i - 1] >= array[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private DocIdSetIterator readBitSetIterator(IndexInput in, int count) throws IOException {
@@ -293,6 +445,9 @@ final class DocIdsWriter {
   void readInts(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
     final int bpv = in.readByte();
     switch (bpv) {
+      case ROARING_BITMAP:
+        readRoaringBitmap(in, count, visitor);
+        break;
       case CONTINUOUS_IDS:
         readContinuousIds(in, count, visitor);
         break;

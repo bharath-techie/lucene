@@ -56,6 +56,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOBooleanSupplier;
 import org.apache.lucene.util.VirtualMethod;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
+import org.roaringbitmap.RangeBitmap;
 
 /** A {@link FilterLeafReader} that can be used to apply additional checks for tests. */
 public class AssertingLeafReader extends FilterLeafReader {
@@ -1636,6 +1637,11 @@ public class AssertingLeafReader extends FilterLeafReader {
       assert fi == null || fi.docValuesSkipIndexType() == DocValuesSkipIndexType.NONE;
       return null;
     }
+  }
+
+  @Override
+  public RangeBitmap getRangeBitMap() {
+    return null;
   }
 
   @Override

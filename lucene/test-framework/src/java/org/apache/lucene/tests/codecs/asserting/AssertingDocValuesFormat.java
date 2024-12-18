@@ -39,6 +39,7 @@ import org.apache.lucene.tests.util.TestUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LongBitSet;
+import org.roaringbitmap.RangeBitmap;
 
 /** Just like the default but with additional asserts. */
 public class AssertingDocValuesFormat extends DocValuesFormat {
@@ -243,7 +244,10 @@ public class AssertingDocValuesFormat extends DocValuesFormat {
       assert values != null;
       return new AssertingLeafReader.AssertingNumericDocValues(values, maxDoc);
     }
-
+    @Override
+    public RangeBitmap getRangeBitmap() {
+      throw new UnsupportedOperationException();
+    }
     @Override
     public BinaryDocValues getBinary(FieldInfo field) throws IOException {
       assert fieldInfos.fieldInfo(field.name).number == field.number;

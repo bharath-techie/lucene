@@ -24,6 +24,7 @@ import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.internal.hppc.IntObjectHashMap;
 import org.apache.lucene.internal.hppc.LongArrayList;
 import org.apache.lucene.store.Directory;
+import org.roaringbitmap.RangeBitmap;
 
 /** Encapsulates multiple producers when there are docvalues updates as one producer */
 // TODO: try to clean up close? no-op?
@@ -140,6 +141,10 @@ class SegmentDocValuesProducer extends DocValuesProducer {
   @Override
   public void close() throws IOException {
     throw new UnsupportedOperationException(); // there is separate ref tracking
+  }
+  @Override
+  public RangeBitmap getRangeBitmap() {
+    throw new UnsupportedOperationException();
   }
 
   @Override

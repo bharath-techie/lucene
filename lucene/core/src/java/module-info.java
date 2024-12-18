@@ -19,7 +19,9 @@
 @SuppressWarnings("module") // the test framework is compiled after the core...
 module org.apache.lucene.core {
   requires java.logging;
-  requires static jdk.management; // this is optional but explicit declaration is recommended
+  requires static jdk.management;
+    requires roaringbitmap;
+    // requires roaringbitmap; // this is optional but explicit declaration is recommended
 
   exports org.apache.lucene.analysis.standard;
   exports org.apache.lucene.analysis.tokenattributes;
@@ -84,6 +86,7 @@ module org.apache.lucene.core {
       org.apache.lucene.search.SortedNumericSortField.Provider,
       org.apache.lucene.search.SortedSetSortField.Provider;
 
+  uses org.roaringbitmap.RangeBitmap;
   uses org.apache.lucene.analysis.CharFilterFactory;
   uses org.apache.lucene.analysis.TokenFilterFactory;
   uses org.apache.lucene.analysis.TokenizerFactory;

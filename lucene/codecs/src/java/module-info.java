@@ -20,8 +20,9 @@ import org.apache.lucene.codecs.bitvectors.HnswBitVectorsFormat;
 /** Lucene codecs and postings formats */
 module org.apache.lucene.codecs {
   requires org.apache.lucene.core;
+    requires roaringbitmap;
 
-  exports org.apache.lucene.codecs.bitvectors;
+    exports org.apache.lucene.codecs.bitvectors;
   exports org.apache.lucene.codecs.blockterms;
   exports org.apache.lucene.codecs.blocktreeords;
   exports org.apache.lucene.codecs.bloom;

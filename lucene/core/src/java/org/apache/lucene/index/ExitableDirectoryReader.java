@@ -26,6 +26,7 @@ import org.apache.lucene.search.VectorScorer;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * The {@link ExitableDirectoryReader} wraps a real index {@link DirectoryReader} and allows for a
@@ -311,6 +312,11 @@ public class ExitableDirectoryReader extends FilterDirectoryReader {
           return nextDoc;
         }
       };
+    }
+
+    @Override
+    public RangeBitmap getRangeBitMap() {
+      return null;
     }
 
     @Override

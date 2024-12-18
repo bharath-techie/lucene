@@ -39,6 +39,7 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.Version;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * A merged {@link CodecReader} view of multiple {@link CodecReader}. This view is primarily
@@ -401,7 +402,10 @@ final class SlowCompositeCodecReaderWrapper extends CodecReader {
         }
       }
     }
-
+    @Override
+    public RangeBitmap getRangeBitmap() {
+      throw new UnsupportedOperationException();
+    }
     @Override
     public NumericDocValues getNumeric(FieldInfo field) throws IOException {
       return MultiDocValues.getNumericValues(new MultiReader(codecReaders), field.name);

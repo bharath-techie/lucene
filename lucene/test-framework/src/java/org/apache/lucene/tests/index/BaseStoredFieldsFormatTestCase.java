@@ -75,6 +75,7 @@ import org.apache.lucene.tests.util.LineFileDocs;
 import org.apache.lucene.tests.util.TestUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * Base class aiming at testing {@link StoredFieldsFormat stored fields formats}. To test a new
@@ -631,6 +632,11 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
 
     @Override
     public CacheHelper getCoreCacheHelper() {
+      return null;
+    }
+
+    @Override
+    public RangeBitmap getRangeBitMap() {
       return null;
     }
 

@@ -43,6 +43,7 @@ import org.apache.lucene.index.TermVectors;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.search.KnnCollector;
 import org.apache.lucene.util.Bits;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * This is a hack to make index sorting fast, with a {@link LeafReader} that always returns merge
@@ -197,6 +198,11 @@ class MergeReaderWrapper extends LeafReader {
       return null;
     }
     return docValues.getSkipper(fi);
+  }
+
+  @Override
+  public RangeBitmap getRangeBitMap() {
+    return null;
   }
 
   @Override

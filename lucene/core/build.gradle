@@ -22,4 +22,5 @@ description = 'Lucene core library'
 dependencies {
   moduleTestImplementation project(':lucene:codecs')
   moduleTestImplementation project(':lucene:test-framework')
+  moduleApi 'org.roaringbitmap:RoaringBitmap:1.3.0'
 }

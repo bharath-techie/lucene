@@ -28,6 +28,7 @@ import org.apache.lucene.index.FilterLeafReader;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.index.StoredFields;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * Shuffles field numbers around to try to trip bugs where field numbers are assumed to always be
@@ -61,6 +62,11 @@ public class MismatchedLeafReader extends FilterLeafReader {
   @Override
   public CacheHelper getCoreCacheHelper() {
     return in.getCoreCacheHelper();
+  }
+
+  @Override
+  public RangeBitmap getRangeBitMap() {
+    return null;
   }
 
   @Override

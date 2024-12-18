@@ -52,8 +52,7 @@ import org.apache.lucene.util.RoaringDocIdSet;
  * that all ranges contain exactly one document.
  *
  * <p>To avoid O(n) lookup time complexity, with n being the number of documents, two lookup tables
- * are used: A lookup table for block offset and index, and a rank structure for DENSE block index
- * lookups.
+ *
  *
  * <p>The lookup table is an array of {@code int}-pairs, with a pair for each block. It allows for
  * direct jumping to the block, as opposed to iteration from the current position and forward one

@@ -30,6 +30,7 @@ import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.search.KnnCollector;
 import org.apache.lucene.util.Bits;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * Wraps arbitrary readers for merging. Note that this can cause slow and memory-intensive merges.
@@ -224,7 +225,10 @@ public final class SlowCodecReaderWrapper {
       public BinaryDocValues getBinary(FieldInfo field) throws IOException {
         return reader.getBinaryDocValues(field.name);
       }
-
+      @Override
+      public RangeBitmap getRangeBitmap() {
+        throw new UnsupportedOperationException();
+      }
       @Override
       public SortedDocValues getSorted(FieldInfo field) throws IOException {
         return reader.getSortedDocValues(field.name);

@@ -16,11 +16,15 @@
  */
 package org.apache.lucene.codecs.lucene90;
 
+import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.DATA_CODEC;
 import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.SKIP_INDEX_JUMP_LENGTH_PER_LEVEL;
 import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.SKIP_INDEX_MAX_LEVEL;
 import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.TERMS_DICT_BLOCK_LZ4_SHIFT;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Iterator;
+
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.BaseTermsEnum;
@@ -55,6 +59,8 @@ import org.apache.lucene.util.LongValues;
 import org.apache.lucene.util.compress.LZ4;
 import org.apache.lucene.util.packed.DirectMonotonicReader;
 import org.apache.lucene.util.packed.DirectReader;
+import org.roaringbitmap.RangeBitmap;
+import org.roaringbitmap.RoaringBitmap;
 
 /** reader for {@link Lucene90DocValuesFormat} */
 final class Lucene90DocValuesProducer extends DocValuesProducer {
@@ -68,6 +74,8 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
   private final int maxDoc;
   private int version = -1;
   private final boolean merging;
+  private IndexInput  bitsetIn;
+  private RangeBitmap rangeBitmap;
 
   /** expert: instantiates a new reader */
   Lucene90DocValuesProducer(
@@ -79,6 +87,48 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
       throws IOException {
     String metaName =
         IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, metaExtension);
+
+    String bitsetFileName = IndexFileNames.segmentFileName(
+            state.segmentInfo.name,
+            state.segmentSuffix,
+            "rbs"
+    );
+
+    bitsetIn = state.directory.openInput(bitsetFileName, state.context);
+    CodecUtil.checkIndexHeader(
+            bitsetIn,
+            DATA_CODEC+"bitset",
+            Lucene90DocValuesFormat.VERSION_START,
+            Lucene90DocValuesFormat.VERSION_CURRENT,
+            state.segmentInfo.getId(),
+            state.segmentSuffix
+    );
+    int serializedSize = bitsetIn.readInt();
+    long min = bitsetIn.readLong();
+    long max = bitsetIn.readLong();
+    bitsetIn.getFilePointer();
+    long st = System.currentTimeMillis();
+    // Read the serialized data into a ByteBuffer
+    ByteBuffer buffer = ByteBuffer.allocate((int) (bitsetIn.length() - bitsetIn.getFilePointer()));
+    byte[] bytes = new byte[(int) (bitsetIn.length() - bitsetIn.getFilePointer())];
+    bitsetIn.readBytes(bytes, 0, (int) (bitsetIn.length() - bitsetIn.getFilePointer()));
+    buffer.put(bytes);
+    buffer.flip();
+    System.out.println("Time taken to initialize buffer : " + (System.currentTimeMillis() - st));
+    // Create the RangeBitmap from the ByteBuffer
+    this.rangeBitmap = RangeBitmap.map(buffer);
+    System.out.println("Time taken to map bitset : " + (System.currentTimeMillis() - st));
+
+//    RoaringBitmap roaringBitmap = this.rangeBitmap.between(Math.min(min, -min), 1708155544-min);
+//    int count = 0;
+//    Iterator<Integer> iter = roaringBitmap.iterator();
+//    while(iter.hasNext()) {
+//      iter.next();
+//      count++;
+//    }
+//    System.out.println("Time taken to count bitset : " + (System.currentTimeMillis() - st) + "::::::" + count);
+//
+
     this.maxDoc = state.segmentInfo.maxDoc();
     numerics = new IntObjectHashMap<>();
     binaries = new IntObjectHashMap<>();
@@ -1364,6 +1414,11 @@ final class Lucene90DocValuesProducer extends DocValuesProducer {
   public SortedNumericDocValues getSortedNumeric(FieldInfo field) throws IOException {
     SortedNumericEntry entry = sortedNumerics.get(field.number);
     return getSortedNumeric(entry);
+  }
+
+  @Override
+  public RangeBitmap getRangeBitmap() throws IOException {
+    return rangeBitmap;
   }
 
   private SortedNumericDocValues getSortedNumeric(SortedNumericEntry entry) throws IOException {

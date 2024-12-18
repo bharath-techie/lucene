@@ -24,6 +24,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOBooleanSupplier;
 import org.apache.lucene.util.Unwrappable;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * A <code>FilterLeafReader</code> contains another LeafReader, which it uses as its basic source of
@@ -422,6 +423,11 @@ public abstract class FilterLeafReader extends LeafReader {
   public NumericDocValues getNumericDocValues(String field) throws IOException {
     ensureOpen();
     return in.getNumericDocValues(field);
+  }
+
+  @Override
+  public RangeBitmap getRangeBitMap() {
+    return null;
   }
 
   @Override

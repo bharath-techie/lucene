@@ -23,6 +23,7 @@ import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.SKIP_IND
 import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.SKIP_INDEX_MAX_LEVEL;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -59,6 +60,8 @@ import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.compress.LZ4;
 import org.apache.lucene.util.packed.DirectMonotonicWriter;
 import org.apache.lucene.util.packed.DirectWriter;
+import org.roaringbitmap.RangeBitmap;
+
 
 /** writer for {@link Lucene90DocValuesFormat} */
 final class Lucene90DocValuesConsumer extends DocValuesConsumer {
@@ -67,6 +70,10 @@ final class Lucene90DocValuesConsumer extends DocValuesConsumer {
   final int maxDoc;
   private byte[] termsDictBuffer;
   private final int skipIndexIntervalSize;
+  public IndexOutput bitsetOut;
+
+  private RangeBitmap.Appender appender = null;
+  SegmentWriteState state;
 
   /** expert: Creates a new writer */
   public Lucene90DocValuesConsumer(
@@ -77,6 +84,7 @@ final class Lucene90DocValuesConsumer extends DocValuesConsumer {
       String metaCodec,
       String metaExtension)
       throws IOException {
+    this.state = state;
     this.termsDictBuffer = new byte[1 << 14];
     boolean success = false;
     try {
@@ -102,6 +110,21 @@ final class Lucene90DocValuesConsumer extends DocValuesConsumer {
           state.segmentSuffix);
       maxDoc = state.segmentInfo.maxDoc();
       this.skipIndexIntervalSize = skipIndexIntervalSize;
+
+      String bitsetFileName = IndexFileNames.segmentFileName(
+              state.segmentInfo.name,
+              state.segmentSuffix,
+              "rbs"
+      );
+      bitsetOut = state.directory.createOutput(bitsetFileName, state.context);
+      CodecUtil.writeIndexHeader(
+              bitsetOut,
+              dataCodec+"bitset",
+              Lucene90DocValuesFormat.VERSION_CURRENT,
+              state.segmentInfo.getId(),
+              state.segmentSuffix
+      );
+
       success = true;
     } finally {
       if (!success) {
@@ -121,14 +144,17 @@ final class Lucene90DocValuesConsumer extends DocValuesConsumer {
       if (data != null) {
         CodecUtil.writeFooter(data); // write checksum
       }
+      if (bitsetOut != null) {
+        CodecUtil.writeFooter(bitsetOut); // write checksum
+      }
       success = true;
     } finally {
       if (success) {
-        IOUtils.close(data, meta);
+        IOUtils.close(data, meta, bitsetOut);
       } else {
-        IOUtils.closeWhileHandlingException(data, meta);
+        IOUtils.closeWhileHandlingException(data, meta, bitsetOut);
       }
-      meta = data = null;
+      meta = data = bitsetOut = null;
     }
   }
 
@@ -870,6 +896,49 @@ final class Lucene90DocValuesConsumer extends DocValuesConsumer {
     meta.writeInt(field.number);
     meta.writeByte(Lucene90DocValuesFormat.SORTED_NUMERIC);
     doAddSortedNumericField(field, valuesProducer, false);
+    if(field.name.equals("@timestamp")) {
+      addRangeBitMap(field, valuesProducer);
+    }
+  }
+
+  private void addRangeBitMap(FieldInfo fieldInfo, DocValuesProducer valuesProducer) throws IOException {
+    SortedNumericDocValues s = valuesProducer.getSortedNumeric(fieldInfo);
+    long min = Long.MAX_VALUE;
+    long max = Long.MIN_VALUE;
+    while(s.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+      long val = s.nextValue();
+      if(val < min) {
+        min = val;
+      }
+      if(val > max) {
+        max = val;
+      }
+    }
+    appender = RangeBitmap.appender(max);
+    s = valuesProducer.getSortedNumeric(fieldInfo);
+    while(s.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+      long val = s.nextValue();
+      appender.add(val - min);
+    }
+    flushBitMap(min, max);
+  }
+
+  private void flushBitMap(long min, long max) throws IOException {
+    int serializedSize = appender.serializedSizeInBytes();
+    System.out.println("Serialized size : " + serializedSize + "===== Docs : " + state.segmentInfo.maxDoc());
+    ByteBuffer buf = ByteBuffer.allocate(serializedSize);
+
+    bitsetOut.writeInt(serializedSize);
+    bitsetOut.writeLong(min);
+    bitsetOut.writeLong(max);
+
+    // Serialize appender into ByteBuffer
+    appender.serialize(buf);
+
+    // If you need to write the serialized data to bitsetOut
+    buf.flip(); // Reset the buffer's position to 0 and set limit to current position
+    bitsetOut.writeBytes(buf.array(), buf.position(), buf.remaining());
+    appender.clear();
   }
 
   private void doAddSortedNumericField(

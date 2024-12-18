@@ -59,6 +59,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.StringHelper;
+import org.roaringbitmap.RangeBitmap;
 
 class SimpleTextDocValuesReader extends DocValuesProducer {
 
@@ -306,6 +307,9 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
         return scratch.byteAt(0) == (byte) 'T';
       }
     };
+  }@Override
+  public RangeBitmap getRangeBitmap() {
+    throw new UnsupportedOperationException();
   }
 
   @Override

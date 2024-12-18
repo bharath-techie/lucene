@@ -30,6 +30,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldExistsQuery;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
+import org.roaringbitmap.RangeBitmap;
 
 /**
  * This reader filters out documents that have a doc values value in the given field and treat these
@@ -217,6 +218,11 @@ public final class SoftDeletesDirectoryReaderWrapper extends FilterDirectoryRead
     @Override
     public CacheHelper getCoreCacheHelper() {
       return reader.getCoreCacheHelper();
+    }
+
+    @Override
+    public RangeBitmap getRangeBitMap() {
+      return null;
     }
 
     @Override

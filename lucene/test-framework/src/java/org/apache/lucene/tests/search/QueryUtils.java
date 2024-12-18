@@ -60,6 +60,7 @@ import org.apache.lucene.tests.util.LuceneTestCase;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.Version;
 import org.junit.Assert;
+import org.roaringbitmap.RangeBitmap;
 
 /** Utility class for sanity-checking queries. */
 public class QueryUtils {
@@ -230,6 +231,11 @@ public class QueryUtils {
 
       @Override
       public DocValuesSkipper getDocValuesSkipper(String field) throws IOException {
+        return null;
+      }
+
+      @Override
+      public RangeBitmap getRangeBitMap() {
         return null;
       }
 
