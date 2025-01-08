@@ -16,62 +16,43 @@
  */
 package org.apache.lucene.util.bkd;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
 import org.apache.lucene.index.PointValues.IntersectVisitor;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.DocBaseBitSetIterator;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.LongsRef;
 import org.apache.lucene.util.packed.PackedInts;
 
-final class DocIdsWriter {
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+final class DocIdsWriterRoaring {
 
   private static final byte CONTINUOUS_IDS = (byte) -2;
   private static final byte BITSET_IDS = (byte) -1;
   private static final byte DELTA_BPV_16 = (byte) 16;
-  private static final byte BPV_21 = (byte) 21;
   private static final byte BPV_24 = (byte) 24;
   private static final byte BPV_32 = (byte) 32;
 
-  //private static final byte SORTED_WITH_ORDER = (byte) 7; // New format identifier
+  private static final byte SORTED_WITH_ORDER = (byte) 7; // New format identifier
 
 
-  //private static final byte SORTED_RLE = (byte) 9;
-  //private static final byte SORTED_DELTA = (byte) 10;
+  private static final byte SORTED_RLE = (byte) 9;
+  private static final byte SORTED_DELTA = (byte) 10;
   private static final byte ROARING_BITMAP = (byte) 6; // New format identifier
 
-  //private static final long BPV_21_MASK = 0x1FFFFFL;
-  //private static final boolean IS_ARCH_64 = Constants.OS_ARCH.equals("aarch64");
 
   // These signs are legacy, should no longer be used in the writing side.
   private static final byte LEGACY_DELTA_VINT = (byte) 0;
 
   private final int[] scratch;
   private final LongsRef scratchLongs = new LongsRef();
-  // Declare these as instance variables to reuse across calls
-  private short[] containerHighBits;
-  private short[] containerSizes;
-
-  // Initialize or resize arrays when needed
-  private void ensureArrayCapacity(int numContainers) {
-    if (containerHighBits == null || containerHighBits.length < numContainers) {
-      containerHighBits = new short[numContainers];
-      containerSizes = new short[numContainers];
-    }
-  }
 
   /**
    * IntsRef to be used to iterate over the scratch buffer. A single instance is reused to avoid
@@ -89,7 +70,7 @@ final class DocIdsWriter {
     scratchIntsRef.offset = 0;
   }
 
-  DocIdsWriter(int maxPointsInLeaf) {
+  DocIdsWriterRoaring(int maxPointsInLeaf) {
     scratch = new int[maxPointsInLeaf];
   }
 
@@ -134,24 +115,6 @@ final class DocIdsWriter {
         // A field with lower cardinality will have higher probability to trigger this optimization.
         out.writeByte(BITSET_IDS);
         writeIdsAsBitSet(docIds, start, count, out);
-        return;
-      }
-      else if (min2max <= 0xFFFF) {
-        out.writeByte(DELTA_BPV_16);
-        for (int i = 0; i < count; i++) {
-          scratch[i] = docIds[start + i] - min;
-        }
-        out.writeVInt(min);
-        final int halfLen = count >>> 1;
-        for (int i = 0; i < halfLen; ++i) {
-          scratch[i] = scratch[halfLen + i] | (scratch[i] << 16);
-        }
-        for (int i = 0; i < halfLen; i++) {
-          out.writeInt(scratch[i]);
-        }
-        if ((count & 1) == 1) {
-          out.writeShort((short) scratch[count - 1]);
-        }
         return;
       }
       else {
@@ -216,72 +179,297 @@ final class DocIdsWriter {
     }
   }
 
+  class IndexedValue implements Comparable<IndexedValue> {
+    int value;
+    int originalIndex;
 
-  private void writeRoaringBitmap(int[] docIds, int start, int count, DataOutput out) throws IOException {
-    // Count containers and write container count
-    short numContainers = 1;
-    short lastHigh = (short) (docIds[start] >>> 16);
-
-    for (int i = 1; i < count; i++) {
-      short high = (short) (docIds[start + i] >>> 16);
-      if (high != lastHigh) {
-        numContainers++;
-        lastHigh = high;
-      }
-    }
-    out.writeShort(numContainers);
-
-    // First pass: Write all container headers packed as longs (2 containers per long)
-    lastHigh = (short) (docIds[start] >>> 16);
-    int containerStart = 0;
-    int containerIndex = 0;
-    long[] packedHeaders = new long[numContainers / 2 + numContainers % 2];
-
-    for (int i = 1; i < count; i++) {
-      short high = (short) (docIds[start + i] >>> 16);
-      if (high != lastHigh) {
-        short containerSize = (short) (i - containerStart);
-        if ((containerIndex & 1) == 0) {
-          packedHeaders[containerIndex >> 1] = ((long) lastHigh << 48) | ((long) containerSize << 32);
-        } else {
-          packedHeaders[containerIndex >> 1] |= ((long) lastHigh << 16) | containerSize;
-        }
-        containerIndex++;
-        lastHigh = high;
-        containerStart = i;
-      }
-    }
-    // Pack last container header
-    short containerSize = (short) (count - containerStart);
-    if ((containerIndex & 1) == 0) {
-      packedHeaders[containerIndex >> 1] = ((long) lastHigh << 48) | ((long) containerSize << 32);
-    } else {
-      packedHeaders[containerIndex >> 1] |= ((long) lastHigh << 16) | containerSize;
+    IndexedValue(int value, int originalIndex) {
+      this.value = value;
+      this.originalIndex = originalIndex;
     }
 
-    // Write packed headers
-    for (long packedHeader : packedHeaders) {
-      out.writeLong(packedHeader);
-    }
-
-    // Write number of complete longs
-    int numCompleteLongs = (count + 3) / 4; // Round up to ensure we include padding
-    out.writeInt(numCompleteLongs);
-
-    // Second pass: Write all values as longs (4 shorts per long), with padding
-    int i = 0;
-    for (; i < numCompleteLongs; i++) {
-      long packed = 0L;
-      int baseIndex = start + (i * 4);
-
-      // Pack actual values
-      for (int j = 0; j < 4 && (baseIndex + j) < start + count; j++) {
-        packed |= ((long) (docIds[baseIndex + j] & 0xFFFF) << (16 * j));
-      }
-      // Any remaining slots in the long are effectively padded with zeros
-      out.writeLong(packed);
+    @Override
+    public int compareTo(IndexedValue other) {
+      return Integer.compare(this.value, other.value);
     }
   }
+
+  private void writeSortedWithOrder(int[] docIds, int start, int count, DataOutput out) throws IOException {
+    out.writeByte(SORTED_WITH_ORDER);
+
+    // Sort docIds while keeping track of original positions
+    IndexedValue[] indexedValues = new IndexedValue[count];
+    for (int i = 0; i < count; i++) {
+      indexedValues[i] = new IndexedValue(docIds[start + i], i);
+    }
+    Arrays.sort(indexedValues);
+
+    // Write sorted docIds
+    int[] sortedDocIds = new int[count];
+    for (int i = 0; i < count; i++) {
+      sortedDocIds[i] = indexedValues[i].value;
+    }
+
+    // Write the sorted values
+    if (sortedDocIds[count - 1] - sortedDocIds[0] + 1 == count) {
+      out.writeByte(CONTINUOUS_IDS);
+      out.writeVInt(sortedDocIds[0]);
+    } else {
+      writeSortedDeltaDocIds(count, out, sortedDocIds);
+    }
+
+    writePositions(count, out, indexedValues);
+  }
+
+  private void writeSortedDeltaDocIds(int count, DataOutput out, int[] sortedDocIds) throws IOException {
+    out.writeByte(SORTED_DELTA);
+    out.writeVInt(count);
+    out.writeVInt(sortedDocIds[0]);
+
+    // Calculate deltas
+    int[] deltas = new int[count - 1];
+    int maxDelta = 0;
+    for (int i = 1; i < count; i++) {
+      deltas[i - 1] = sortedDocIds[i] - sortedDocIds[i - 1];
+      maxDelta = Math.max(maxDelta, deltas[i - 1]);
+    }
+
+    // Determine bits per value
+    int bitsPerValue = PackedInts.bitsRequired(maxDelta);
+    out.writeByte((byte) bitsPerValue);
+
+    // Write deltas
+    PackedInts.Writer writer = PackedInts.getWriterNoHeader(out, PackedInts.Format.PACKED, count - 1, bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+    for (int delta : deltas) {
+      writer.add(delta);
+    }
+    writer.finish();
+  }
+
+  private void writePositions(int count, DataOutput out, IndexedValue[] indexedValues) throws IOException {
+    // Create inverse mapping
+    int[] inverseMapping = new int[count];
+    for (int i = 0; i < count; i++) {
+      inverseMapping[indexedValues[i].originalIndex] = i;
+      //System.out.println(indexedValues[i].originalIndex + "===" + indexedValues[i].value);
+    }
+
+    // Determine bits per value
+    int bitsPerValue = PackedInts.bitsRequired(count - 1);
+    out.writeByte((byte) bitsPerValue);
+
+    // Write positions
+    PackedInts.Writer writer = PackedInts.getWriterNoHeader(out, PackedInts.Format.PACKED, count, bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+    for (int position : inverseMapping) {
+      writer.add(position);
+    }
+    writer.finish();
+  }
+
+  private boolean shouldUseSortedWithOrder(int[] docIds, int start, int count) {
+    // Heuristic to decide when to use sorted with order format
+    // For example, when the range of values is large but the count is relatively small
+    int min = docIds[start];
+    int max = min;
+    for (int i = 1; i < count; i++) {
+      int val = docIds[start + i];
+      min = Math.min(min, val);
+      max = Math.max(max, val);
+    }
+
+    // Use this format when the range is large but count is small
+    return (max - min) > count * 4;
+  }
+
+  private void writeRoaringBitmap(int[] docIds, int start, int count, DataOutput out) throws IOException {
+    //System.out.println("rbmp");
+    out.writeVInt(count);
+
+    List<Container> containers = new ArrayList<>();
+    short currentHigh = -1;
+    int containerCount = 0;
+
+    // Single pass through sorted values
+    for (int i = 0; i < count; i++) {
+      int docId = docIds[start + i];
+      short high = (short)(docId >>> 16);
+      short low = (short)(docId & 0xFFFF);
+
+      if (high != currentHigh) {
+        currentHigh = high;
+        containers.add(new Container(high));
+        containerCount++;
+      }
+      containers.get(containerCount - 1).add(low);
+    }
+
+    // Write number of containers
+    out.writeVInt(containerCount);
+
+    // Write each container
+    for (Container container : containers) {
+      container.writeTo(out);
+    }
+  }
+
+  private static class Container {
+    private final short highBits;
+    private final List<Short> values;    // low bits
+
+    Container(short highBits) {
+      this.highBits = highBits;
+      this.values = new ArrayList<>();
+    }
+
+    void add(short value) {
+      values.add(value);
+    }
+
+    void writeTo(DataOutput out) throws IOException {
+      out.writeShort(highBits);
+      out.writeVInt(values.size());
+      for (short value : values) {
+        out.writeShort(value);
+      }
+    }
+  }
+
+  private void readSortedWithOrder1(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
+    byte valueFormat = in.readByte();
+    int[] sortedValues = new int[count];
+
+    switch (valueFormat) {
+      case CONTINUOUS_IDS:
+        int start = in.readVInt();
+        for (int i = 0; i < count; i++) {
+          sortedValues[i] = start + i;
+        }
+        break;
+
+      case SORTED_DELTA:
+        int deltaCount = in.readVInt();
+        if (deltaCount != count) {
+          throw new IOException("Count mismatch");
+        }
+
+        sortedValues[0] = in.readVInt();
+        byte bitsPerValue = in.readByte();
+
+        PackedInts.ReaderIterator deltaIt = PackedInts.getReaderIteratorNoHeader(in, PackedInts.Format.PACKED, PackedInts.VERSION_CURRENT, count - 1, bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+        for (int i = 1; i < count; i++) {
+          sortedValues[i] = sortedValues[i - 1] + (int) deltaIt.next();
+        }
+        break;
+
+      default:
+        throw new IOException("Unknown value format: " + valueFormat);
+    }
+
+    // Read positions
+    byte posBitsPerValue = in.readByte();
+    PackedInts.ReaderIterator posIt = PackedInts.getReaderIteratorNoHeader(in, PackedInts.Format.PACKED, PackedInts.VERSION_CURRENT, count, posBitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+
+    int[] docIds = new int[count];
+    for (int i = 0; i < count; i++) {
+      int position = (int) posIt.next();
+      docIds[i] = sortedValues[position];
+    }
+
+    // Verify order and visit docIds
+    for (int i = 0; i < count; i++) {
+//            if (i > 0 && docIds[i] <= docIds[i - 1]) {
+//                throw new AssertionError("docs out of order: last doc=" + docIds[i-1] + " current doc=" + docIds[i] + " ord=" + i);
+//            }
+      visitor.visit(docIds[i]);
+    }
+    //System.out.println("=================================================");
+  }
+
+  private void readSortedWithOrder(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
+    byte valueFormat = in.readByte();
+    int[] sortedValues = new int[count];
+
+    switch (valueFormat) {
+      case CONTINUOUS_IDS:
+        int start = in.readVInt();
+        for (int i = 0; i < count; i++) {
+          sortedValues[i] = start + i;
+        }
+        break;
+
+      case SORTED_DELTA:
+        int deltaCount = in.readVInt();
+        if (deltaCount != count) {
+          throw new IOException("Count mismatch");
+        }
+
+        sortedValues[0] = in.readVInt();
+        byte bitsPerValue = in.readByte();
+
+        PackedInts.ReaderIterator deltaIt = PackedInts.getReaderIteratorNoHeader(in, PackedInts.Format.PACKED, PackedInts.VERSION_CURRENT, count - 1, bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+        for (int i = 1; i < count; i++) {
+          sortedValues[i] = sortedValues[i - 1] + (int) deltaIt.next();
+        }
+        break;
+
+      default:
+        throw new IOException("Unknown value format: " + valueFormat);
+    }
+
+    // Visit sorted values directly
+    for (int value : sortedValues) {
+      visitor.visit(value);
+    }
+  }
+
+  private void readSortedWithOrder(IndexInput in, int count, int[] docIds) throws IOException {
+    byte valueFormat = in.readByte();
+    int[] sortedValues = new int[count];
+
+    switch (valueFormat) {
+      case CONTINUOUS_IDS:
+        int start = in.readVInt();
+        for (int i = 0; i < count; i++) {
+          sortedValues[i] = start + i;
+        }
+        break;
+
+      case SORTED_DELTA:
+        int deltaCount = in.readVInt();
+        if (deltaCount != count) {
+          throw new IOException("Count mismatch");
+        }
+
+        sortedValues[0] = in.readVInt();
+        byte bitsPerValue = in.readByte();
+
+        PackedInts.ReaderIterator deltaIt = PackedInts.getReaderIteratorNoHeader(in, PackedInts.Format.PACKED, PackedInts.VERSION_CURRENT, count - 1, bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+        for (int i = 1; i < count; i++) {
+          sortedValues[i] = sortedValues[i - 1] + (int) deltaIt.next();
+        }
+        break;
+
+      default:
+        throw new IOException("Unknown value format: " + valueFormat);
+    }
+    // Read positions
+    byte posBitsPerValue = in.readByte();
+    PackedInts.ReaderIterator posIt = PackedInts.getReaderIteratorNoHeader(in, PackedInts.Format.PACKED, PackedInts.VERSION_CURRENT, count, posBitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+
+    for (int i = 0; i < count; i++) {
+      int position = (int) posIt.next();
+      //System.out.println(sortedValues[position] + "===" + docIds[i] + "===" + i);
+      docIds[i] = sortedValues[position];
+    }
+
+    // Verify order and visit docIds
+//        for (int i = 0; i < count; i++) {
+//            if (i > 0 && docIds[i] <= docIds[i - 1]) {
+//                throw new AssertionError("docs out of order: last doc=" + docIds[i-1] + " current doc=" + docIds[i] + " ord=" + i);
+//            }
+//        }
+  }
+
 
   private static void writeIdsAsBitSet(int[] docIds, int start, int count, DataOutput out)
           throws IOException {
@@ -322,6 +510,9 @@ final class DocIdsWriter {
   void readInts(IndexInput in, int count, int[] docIDs) throws IOException {
     final int bpv = in.readByte();
     switch (bpv) {
+      case SORTED_WITH_ORDER:
+        readSortedWithOrder(in, count, docIDs);
+        break;
       case ROARING_BITMAP:
         readRoaringBitmap(in, count, docIDs);
         break;
@@ -334,9 +525,6 @@ final class DocIdsWriter {
       case DELTA_BPV_16:
         readDelta16(in, count, docIDs);
         break;
-//      case BPV_21:
-//        readInts21(in, count, docIDs);
-//        break;
       case BPV_24:
         readInts24(in, count, docIDs);
         break;
@@ -435,7 +623,9 @@ final class DocIdsWriter {
   void readInts(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
     final int bpv = in.readByte();
     switch (bpv) {
-
+      case SORTED_WITH_ORDER:
+        readSortedWithOrder(in, count, visitor);
+        break;
       case ROARING_BITMAP:
         readRoaringBitmap(in, count, visitor);
         break;
@@ -462,36 +652,61 @@ final class DocIdsWriter {
     }
   }
 
+  // Array implementation
   private void readRoaringBitmap(IndexInput in, int count, int[] docIds) throws IOException {
-    final short numContainers = in.readShort();
+    int totalCount = in.readVInt();
+    if (totalCount != count) {
+      throw new IOException("Count mismatch");
+    }
+
+    // Read number of containers
+    int containerCount = in.readVInt();
+
     int pos = 0;
+    // Read each container
+    for (int i = 0; i < containerCount; i++) {
+      short highBits = in.readShort();
+      int containerSize = in.readVInt();
 
-    // Process each container
-    for (int i = 0; i < numContainers && pos < count; i++) {
-      int header = in.readInt();
-      int highBits = header >>> 16;
-      int containerSize = header & 0xFFFF;
-
-      // Read this container's low bits
-      int j = 0;
-      for (; j <= containerSize - 4; j += 4) {
-        long packed = in.readLong();
-        docIds[pos++] = highBits << 16 | ((int)packed & 0xFFFF);
-        docIds[pos++] = highBits << 16 | ((int)(packed >>> 16) & 0xFFFF);
-        docIds[pos++] = highBits << 16 | ((int)(packed >>> 32) & 0xFFFF);
-        docIds[pos++] = highBits << 16 | ((int)(packed >>> 48) & 0xFFFF);
-      }
-      for (; j < containerSize; j++) {
-        docIds[pos++] = highBits << 16 | (in.readShort() & 0xFFFF);
+      // Read values
+      for (int j = 0; j < containerSize; j++) {
+        short value = in.readShort();
+        docIds[pos++] = (highBits << 16) | (value & 0xFFFF);
       }
     }
 
+    if (pos != count) {
+      throw new IOException("Read " + pos + " values, expected " + count);
+    }
   }
+
+  // Visitor implementation
   private void readRoaringBitmap(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
-    readRoaringBitmap(in, count, scratch);
-    scratchIntsRef.ints = scratch;
-    scratchIntsRef.length = count;
-    visitor.visit(scratchIntsRef);
+    int totalCount = in.readVInt();
+//    if (totalCount != count) {
+//      throw new IOException("Count mismatch");
+//    }
+
+    // Read number of containers
+    int containerCount = in.readVInt();
+
+    int pos = 0;
+    // Read each container
+    for (int i = 0; i < containerCount; i++) {
+      short highBits = in.readShort();
+      int containerSize = in.readVInt();
+
+      // Read values
+      for (int j = 0; j < containerSize; j++) {
+        short value = in.readShort();
+        visitor.visit((highBits << 16) | (value & 0xFFFF));
+        pos++;
+      }
+    }
+
+    if (pos != count) {
+      throw new IOException("Read " + pos + " values, expected " + count);
+    }
   }
 
   private void readBitSet(IndexInput in, int count, IntersectVisitor visitor) throws IOException {

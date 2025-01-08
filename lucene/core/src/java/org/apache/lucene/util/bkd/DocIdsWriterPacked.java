@@ -16,62 +16,34 @@
  */
 package org.apache.lucene.util.bkd;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
 import org.apache.lucene.index.PointValues.IntersectVisitor;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.DocBaseBitSetIterator;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.LongsRef;
 import org.apache.lucene.util.packed.PackedInts;
 
-final class DocIdsWriter {
+import java.io.IOException;
+import java.util.Arrays;
+
+final class DocIdsWriterPacked {
 
   private static final byte CONTINUOUS_IDS = (byte) -2;
   private static final byte BITSET_IDS = (byte) -1;
+
   private static final byte DELTA_BPV_16 = (byte) 16;
-  private static final byte BPV_21 = (byte) 21;
   private static final byte BPV_24 = (byte) 24;
   private static final byte BPV_32 = (byte) 32;
-
-  //private static final byte SORTED_WITH_ORDER = (byte) 7; // New format identifier
-
-
-  //private static final byte SORTED_RLE = (byte) 9;
-  //private static final byte SORTED_DELTA = (byte) 10;
-  private static final byte ROARING_BITMAP = (byte) 6; // New format identifier
-
-  //private static final long BPV_21_MASK = 0x1FFFFFL;
-  //private static final boolean IS_ARCH_64 = Constants.OS_ARCH.equals("aarch64");
-
+    private static final byte PACKED_INTS = (byte) 64;  // New type for PackedInts
   // These signs are legacy, should no longer be used in the writing side.
   private static final byte LEGACY_DELTA_VINT = (byte) 0;
 
   private final int[] scratch;
   private final LongsRef scratchLongs = new LongsRef();
-  // Declare these as instance variables to reuse across calls
-  private short[] containerHighBits;
-  private short[] containerSizes;
-
-  // Initialize or resize arrays when needed
-  private void ensureArrayCapacity(int numContainers) {
-    if (containerHighBits == null || containerHighBits.length < numContainers) {
-      containerHighBits = new short[numContainers];
-      containerSizes = new short[numContainers];
-    }
-  }
 
   /**
    * IntsRef to be used to iterate over the scratch buffer. A single instance is reused to avoid
@@ -89,21 +61,11 @@ final class DocIdsWriter {
     scratchIntsRef.offset = 0;
   }
 
-  DocIdsWriter(int maxPointsInLeaf) {
+  DocIdsWriterPacked(int maxPointsInLeaf) {
     scratch = new int[maxPointsInLeaf];
   }
 
-  void writeDocIds(int[] docIds, int start, int count, DataOutput out) throws IOException {
-//    boolean useSortedWithOrder = shouldUseSortedWithOrder(docIds, start, count);
-//
-//    if (useSortedWithOrder) {
-//      //System.out.println("write sorted");
-//      writeSortedWithOrder(docIds, start, count, out);
-//      return;
-//    }
-//    System.out.println("not write sorted");
-
-
+  void writeDocIds1(int[] docIds, int start, int count, DataOutput out) throws IOException {
     // docs can be sorted either when all docs in a block have the same value
     // or when a segment is sorted
     boolean strictlySorted = true;
@@ -120,7 +82,38 @@ final class DocIdsWriter {
     }
 
     int min2max = max - min + 1;
-    //System.out.println("strictly sorted : " + strictlySorted + " : " + min2max);
+
+    int bitsRequired = PackedInts.bitsRequired(max);
+    out.writeByte(PACKED_INTS);
+    out.writeVInt(bitsRequired);
+
+    PackedInts.Writer writer = PackedInts.getWriterNoHeader(
+            out, PackedInts.Format.PACKED, count, bitsRequired,
+            PackedInts.DEFAULT_BUFFER_SIZE);
+
+    for (int i = 0; i < count; i++) {
+      writer.add(docIds[start + i]);
+    }
+    writer.finish();
+  }
+
+  void writeDocIds(int[] docIds, int start, int count, DataOutput out) throws IOException {
+    // docs can be sorted either when all docs in a block have the same value
+    // or when a segment is sorted
+    boolean strictlySorted = true;
+    int min = docIds[0];
+    int max = docIds[0];
+    for (int i = 1; i < count; ++i) {
+      int last = docIds[start + i - 1];
+      int current = docIds[start + i];
+      if (last >= current) {
+        strictlySorted = false;
+      }
+      min = Math.min(min, current);
+      max = Math.max(max, current);
+    }
+
+    int min2max = max - min + 1;
     if (strictlySorted) {
       if (min2max == count) {
         // continuous ids, typically happens when segment is sorted
@@ -136,32 +129,25 @@ final class DocIdsWriter {
         writeIdsAsBitSet(docIds, start, count, out);
         return;
       }
-      else if (min2max <= 0xFFFF) {
-        out.writeByte(DELTA_BPV_16);
-        for (int i = 0; i < count; i++) {
-          scratch[i] = docIds[start + i] - min;
-        }
-        out.writeVInt(min);
-        final int halfLen = count >>> 1;
-        for (int i = 0; i < halfLen; ++i) {
-          scratch[i] = scratch[halfLen + i] | (scratch[i] << 16);
-        }
-        for (int i = 0; i < halfLen; i++) {
-          out.writeInt(scratch[i]);
-        }
-        if ((count & 1) == 1) {
-          out.writeShort((short) scratch[count - 1]);
-        }
-        return;
-      }
-      else {
-        //System.out.println("rbmap");
-        out.writeByte(ROARING_BITMAP);
-        writeRoaringBitmap(docIds, start, count, out);
-        return;
-      }
     }
-    //System.out.println("bpv -- min2max : " + min2max + " max : " + max);
+    /**
+    int bitsRequired = PackedInts.bitsRequired(max);
+      if (bitsRequired < 24) {
+        //System.out.println("BITS required : " + bitsRequired);// Use PackedInts for smaller values
+          out.writeByte(PACKED_INTS);
+          out.writeVInt(bitsRequired);
+
+          PackedInts.Writer writer = PackedInts.getWriterNoHeader(
+                  out, PackedInts.Format.PACKED, count, bitsRequired,
+                  PackedInts.DEFAULT_BUFFER_SIZE);
+
+          for (int i = 0; i < count; i++) {
+              writer.add(docIds[start + i]);
+          }
+          writer.finish();
+      }
+     **/
+    int bitsRequired = PackedInts.bitsRequired(max);
     if (min2max <= 0xFFFF) {
       out.writeByte(DELTA_BPV_16);
       for (int i = 0; i < count; i++) {
@@ -178,7 +164,21 @@ final class DocIdsWriter {
       if ((count & 1) == 1) {
         out.writeShort((short) scratch[count - 1]);
       }
-    } else {
+    }
+    else if(bitsRequired < 24) {
+        out.writeByte(PACKED_INTS);
+        out.writeVInt(bitsRequired);
+
+        PackedInts.Writer writer = PackedInts.getWriterNoHeader(
+                out, PackedInts.Format.PACKED, count, bitsRequired,
+                PackedInts.DEFAULT_BUFFER_SIZE);
+
+        for (int i = 0; i < count; i++) {
+            writer.add(docIds[start + i]);
+        }
+        writer.finish();
+    }
+    else {
       if (max <= 0xFFFFFF) {
         out.writeByte(BPV_24);
         // write them the same way we are reading them.
@@ -194,10 +194,10 @@ final class DocIdsWriter {
           int doc8 = docIds[start + i + 7];
           long l1 = (doc1 & 0xffffffL) << 40 | (doc2 & 0xffffffL) << 16 | ((doc3 >>> 8) & 0xffffL);
           long l2 =
-                  (doc3 & 0xffL) << 56
-                          | (doc4 & 0xffffffL) << 32
-                          | (doc5 & 0xffffffL) << 8
-                          | ((doc6 >> 16) & 0xffL);
+              (doc3 & 0xffL) << 56
+                  | (doc4 & 0xffffffL) << 32
+                  | (doc5 & 0xffffffL) << 8
+                  | ((doc6 >> 16) & 0xffL);
           long l3 = (doc6 & 0xffffL) << 48 | (doc7 & 0xffffffL) << 24 | (doc8 & 0xffffffL);
           out.writeLong(l1);
           out.writeLong(l2);
@@ -216,75 +216,8 @@ final class DocIdsWriter {
     }
   }
 
-
-  private void writeRoaringBitmap(int[] docIds, int start, int count, DataOutput out) throws IOException {
-    // Count containers and write container count
-    short numContainers = 1;
-    short lastHigh = (short) (docIds[start] >>> 16);
-
-    for (int i = 1; i < count; i++) {
-      short high = (short) (docIds[start + i] >>> 16);
-      if (high != lastHigh) {
-        numContainers++;
-        lastHigh = high;
-      }
-    }
-    out.writeShort(numContainers);
-
-    // First pass: Write all container headers packed as longs (2 containers per long)
-    lastHigh = (short) (docIds[start] >>> 16);
-    int containerStart = 0;
-    int containerIndex = 0;
-    long[] packedHeaders = new long[numContainers / 2 + numContainers % 2];
-
-    for (int i = 1; i < count; i++) {
-      short high = (short) (docIds[start + i] >>> 16);
-      if (high != lastHigh) {
-        short containerSize = (short) (i - containerStart);
-        if ((containerIndex & 1) == 0) {
-          packedHeaders[containerIndex >> 1] = ((long) lastHigh << 48) | ((long) containerSize << 32);
-        } else {
-          packedHeaders[containerIndex >> 1] |= ((long) lastHigh << 16) | containerSize;
-        }
-        containerIndex++;
-        lastHigh = high;
-        containerStart = i;
-      }
-    }
-    // Pack last container header
-    short containerSize = (short) (count - containerStart);
-    if ((containerIndex & 1) == 0) {
-      packedHeaders[containerIndex >> 1] = ((long) lastHigh << 48) | ((long) containerSize << 32);
-    } else {
-      packedHeaders[containerIndex >> 1] |= ((long) lastHigh << 16) | containerSize;
-    }
-
-    // Write packed headers
-    for (long packedHeader : packedHeaders) {
-      out.writeLong(packedHeader);
-    }
-
-    // Write number of complete longs
-    int numCompleteLongs = (count + 3) / 4; // Round up to ensure we include padding
-    out.writeInt(numCompleteLongs);
-
-    // Second pass: Write all values as longs (4 shorts per long), with padding
-    int i = 0;
-    for (; i < numCompleteLongs; i++) {
-      long packed = 0L;
-      int baseIndex = start + (i * 4);
-
-      // Pack actual values
-      for (int j = 0; j < 4 && (baseIndex + j) < start + count; j++) {
-        packed |= ((long) (docIds[baseIndex + j] & 0xFFFF) << (16 * j));
-      }
-      // Any remaining slots in the long are effectively padded with zeros
-      out.writeLong(packed);
-    }
-  }
-
   private static void writeIdsAsBitSet(int[] docIds, int start, int count, DataOutput out)
-          throws IOException {
+      throws IOException {
     int min = docIds[start];
     int max = docIds[start + count - 1];
 
@@ -316,27 +249,22 @@ final class DocIdsWriter {
     assert currentWordIndex + 1 == totalWordCount;
   }
 
-  /**
-   * Read {@code count} integers into {@code docIDs}.
-   */
+  /** Read {@code count} integers into {@code docIDs}. */
   void readInts(IndexInput in, int count, int[] docIDs) throws IOException {
     final int bpv = in.readByte();
     switch (bpv) {
-      case ROARING_BITMAP:
-        readRoaringBitmap(in, count, docIDs);
-        break;
       case CONTINUOUS_IDS:
         readContinuousIds(in, count, docIDs);
         break;
+        case PACKED_INTS:
+            readPackedInts(in, count, docIDs);
+            break;
       case BITSET_IDS:
         readBitSet(in, count, docIDs);
         break;
       case DELTA_BPV_16:
         readDelta16(in, count, docIDs);
         break;
-//      case BPV_21:
-//        readInts21(in, count, docIDs);
-//        break;
       case BPV_24:
         readInts24(in, count, docIDs);
         break;
@@ -350,6 +278,16 @@ final class DocIdsWriter {
         throw new IOException("Unsupported number of bits per value: " + bpv);
     }
   }
+
+    private void readPackedInts(IndexInput in, int count, int[] docIDs) throws IOException {
+        int bitsPerValue = in.readVInt();
+        PackedInts.ReaderIterator reader = PackedInts.getReaderIteratorNoHeader(in, PackedInts.Format.PACKED,
+                PackedInts.VERSION_CURRENT, count, bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
+
+        for (int i = 0; i < count; i++) {
+            docIDs[i] = (int) reader.next();
+        }
+    }
 
   private DocIdSetIterator readBitSetIterator(IndexInput in, int count) throws IOException {
     int offsetWords = in.readVInt();
@@ -373,7 +311,7 @@ final class DocIdsWriter {
   }
 
   private static void readLegacyDeltaVInts(IndexInput in, int count, int[] docIDs)
-          throws IOException {
+      throws IOException {
     int doc = 0;
     for (int i = 0; i < count; i++) {
       doc += in.readVInt();
@@ -435,13 +373,12 @@ final class DocIdsWriter {
   void readInts(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
     final int bpv = in.readByte();
     switch (bpv) {
-
-      case ROARING_BITMAP:
-        readRoaringBitmap(in, count, visitor);
-        break;
       case CONTINUOUS_IDS:
         readContinuousIds(in, count, visitor);
         break;
+        case PACKED_INTS:
+            readPackedInts(in, count, visitor);
+            break;
       case BITSET_IDS:
         readBitSet(in, count, visitor);
         break;
@@ -462,37 +399,15 @@ final class DocIdsWriter {
     }
   }
 
-  private void readRoaringBitmap(IndexInput in, int count, int[] docIds) throws IOException {
-    final short numContainers = in.readShort();
-    int pos = 0;
+    private void readPackedInts(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
+        int bitsPerValue = in.readVInt();
+        PackedInts.ReaderIterator reader = PackedInts.getReaderIteratorNoHeader(in, PackedInts.Format.PACKED,
+                PackedInts.VERSION_CURRENT, count, bitsPerValue, PackedInts.DEFAULT_BUFFER_SIZE);
 
-    // Process each container
-    for (int i = 0; i < numContainers && pos < count; i++) {
-      int header = in.readInt();
-      int highBits = header >>> 16;
-      int containerSize = header & 0xFFFF;
-
-      // Read this container's low bits
-      int j = 0;
-      for (; j <= containerSize - 4; j += 4) {
-        long packed = in.readLong();
-        docIds[pos++] = highBits << 16 | ((int)packed & 0xFFFF);
-        docIds[pos++] = highBits << 16 | ((int)(packed >>> 16) & 0xFFFF);
-        docIds[pos++] = highBits << 16 | ((int)(packed >>> 32) & 0xFFFF);
-        docIds[pos++] = highBits << 16 | ((int)(packed >>> 48) & 0xFFFF);
-      }
-      for (; j < containerSize; j++) {
-        docIds[pos++] = highBits << 16 | (in.readShort() & 0xFFFF);
-      }
+        for (int i = 0; i < count; i++) {
+            visitor.visit((int) reader.next());
+        }
     }
-
-  }
-  private void readRoaringBitmap(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
-    readRoaringBitmap(in, count, scratch);
-    scratchIntsRef.ints = scratch;
-    scratchIntsRef.length = count;
-    visitor.visit(scratchIntsRef);
-  }
 
   private void readBitSet(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
     DocIdSetIterator bitSetIterator = readBitSetIterator(in, count);
@@ -500,7 +415,7 @@ final class DocIdsWriter {
   }
 
   private static void readContinuousIds(IndexInput in, int count, IntersectVisitor visitor)
-          throws IOException {
+      throws IOException {
     int start = in.readVInt();
     int extra = start & 63;
     int offset = start - extra;
@@ -511,7 +426,7 @@ final class DocIdsWriter {
   }
 
   private static void readLegacyDeltaVInts(IndexInput in, int count, IntersectVisitor visitor)
-          throws IOException {
+      throws IOException {
     int doc = 0;
     for (int i = 0; i < count; i++) {
       doc += in.readVInt();
@@ -527,7 +442,7 @@ final class DocIdsWriter {
   }
 
   private static void readInts24(IndexInput in, int count, IntersectVisitor visitor)
-          throws IOException {
+      throws IOException {
     int i;
     for (i = 0; i < count - 7; i += 8) {
       long l1 = in.readLong();

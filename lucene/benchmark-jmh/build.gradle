@@ -24,9 +24,18 @@ description = 'Lucene JMH micro-benchmarking module'
 dependencies {
   moduleImplementation project(':lucene:core')
   moduleImplementation project(':lucene:expressions')
+  moduleImplementation project(':lucene:test-framework')
 
   moduleImplementation deps.jmh.core
   annotationProcessor deps.jmh.annprocess
+
+  moduleApi (deps.randomizedtesting.runner, {
+    exclude group: "junit"
+  })
+  moduleApi (deps.junit, {
+    exclude group: "org.hamcrest"
+  })
+  moduleApi deps.hamcrest
 }
 
 
