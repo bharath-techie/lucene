@@ -32,6 +32,7 @@ final class DocIdsWriter {
   private static final byte DELTA_BPV_16 = (byte) 16;
   private static final byte BPV_24 = (byte) 24;
   private static final byte BPV_32 = (byte) 32;
+  private static final byte ROARING = (byte) 1;
   // These signs are legacy, should no longer be used in the writing side.
   private static final byte LEGACY_DELTA_VINT = (byte) 0;
 
@@ -88,6 +89,27 @@ final class DocIdsWriter {
         out.writeByte(BITSET_IDS);
         writeIdsAsBitSet(docIds, start, count, out);
         return;
+      } else if (min2max <= 0xFFFF) {
+        out.writeByte(DELTA_BPV_16);
+        for (int i = 0; i < count; i++) {
+          scratch[i] = docIds[start + i] - min;
+        }
+        out.writeVInt(min);
+        final int halfLen = count >>> 1;
+        for (int i = 0; i < halfLen; ++i) {
+          scratch[i] = scratch[halfLen + i] | (scratch[i] << 16);
+        }
+        for (int i = 0; i < halfLen; i++) {
+          out.writeInt(scratch[i]);
+        }
+        if ((count & 1) == 1) {
+          out.writeShort((short) scratch[count - 1]);
+        }
+        return;
+      } else {
+        out.writeByte(ROARING);
+        writeRoaringBitmap(docIds, start, count, out);
+        return;
       }
     }
 
@@ -123,10 +145,10 @@ final class DocIdsWriter {
           int doc8 = docIds[start + i + 7];
           long l1 = (doc1 & 0xffffffL) << 40 | (doc2 & 0xffffffL) << 16 | ((doc3 >>> 8) & 0xffffL);
           long l2 =
-              (doc3 & 0xffL) << 56
-                  | (doc4 & 0xffffffL) << 32
-                  | (doc5 & 0xffffffL) << 8
-                  | ((doc6 >> 16) & 0xffL);
+                  (doc3 & 0xffL) << 56
+                          | (doc4 & 0xffffffL) << 32
+                          | (doc5 & 0xffffffL) << 8
+                          | ((doc6 >> 16) & 0xffL);
           long l3 = (doc6 & 0xffffL) << 48 | (doc7 & 0xffffffL) << 24 | (doc8 & 0xffffffL);
           out.writeLong(l1);
           out.writeLong(l2);
@@ -146,7 +168,7 @@ final class DocIdsWriter {
   }
 
   private static void writeIdsAsBitSet(int[] docIds, int start, int count, DataOutput out)
-      throws IOException {
+          throws IOException {
     int min = docIds[start];
     int max = docIds[start + count - 1];
 
@@ -178,6 +200,80 @@ final class DocIdsWriter {
     assert currentWordIndex + 1 == totalWordCount;
   }
 
+  private void writeRoaringBitmap(int[] docIds, int start, int count, DataOutput out) throws IOException {
+    // Count and write containers
+    short numContainers = 1;
+    short lastHigh = (short)(docIds[start] >>> 16);
+    for (int i = 1; i < count; i++) {
+      if ((short)(docIds[start + i] >>> 16) != lastHigh) {
+        numContainers++;
+        lastHigh = (short)(docIds[start + i] >>> 16);
+      }
+    }
+    out.writeShort(numContainers);
+
+    // Write each container's header followed by its low bits
+    lastHigh = (short)(docIds[start] >>> 16);
+    int containerStart = 0;
+
+    for (int i = 1; i <= count; i++) {
+      if (i == count || (short)(docIds[start + i] >>> 16) != lastHigh) {
+        int containerSize = i - containerStart;
+        out.writeInt((lastHigh << 16) | containerSize);
+
+        // Write this container's low bits packed
+        int j = containerStart;
+        for (; j <= containerStart + containerSize - 4; j += 4) {
+          out.writeLong(((long)(docIds[start + j] & 0xFFFF)) |
+                  ((long)(docIds[start + j + 1] & 0xFFFF) << 16) |
+                  ((long)(docIds[start + j + 2] & 0xFFFF) << 32) |
+                  ((long)(docIds[start + j + 3] & 0xFFFF) << 48));
+        }
+        for (; j < containerStart + containerSize; j++) {
+          out.writeShort((short)(docIds[start + j] & 0xFFFF));
+        }
+
+        if (i < count) {
+          lastHigh = (short)(docIds[start + i] >>> 16);
+          containerStart = i;
+        }
+      }
+    }
+  }
+
+  private void readRoaringBitmap(IndexInput in, int count, int[] docIds) throws IOException {
+    final short numContainers = in.readShort();
+    int pos = 0;
+
+    // Process each container
+    for (int i = 0; i < numContainers && pos <  count; i++) {
+      int header = in.readInt();
+      int highBits = header >>> 16;
+      int containerSize = header & 0xFFFF;
+
+      // Read this container's low bits
+      int j = 0;
+      for (; j <= containerSize - 4; j += 4) {
+        long packed = in.readLong();
+        docIds[pos++] = highBits << 16 | ((int)packed & 0xFFFF);
+        docIds[pos++] = highBits << 16 | ((int)(packed >>> 16) & 0xFFFF);
+        docIds[pos++] = highBits << 16 | ((int)(packed >>> 32) & 0xFFFF);
+        docIds[pos++] = highBits << 16 | ((int)(packed >>> 48) & 0xFFFF);
+      }
+      for (; j < containerSize; j++) {
+        docIds[pos++] = highBits << 16 | (in.readShort() & 0xFFFF);
+      }
+    }
+
+  }
+
+  private void readRoaringBitmap(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
+    readRoaringBitmap(in, count, scratch);
+    scratchIntsRef.ints = scratch;
+    scratchIntsRef.length = count;
+    visitor.visit(scratchIntsRef);
+  }
+
   /** Read {@code count} integers into {@code docIDs}. */
   void readInts(IndexInput in, int count, int[] docIDs) throws IOException {
     final int bpv = in.readByte();
@@ -196,6 +292,9 @@ final class DocIdsWriter {
         break;
       case BPV_32:
         readInts32(in, count, docIDs);
+        break;
+      case ROARING:
+        readRoaringBitmap(in, count, docIDs);
         break;
       case LEGACY_DELTA_VINT:
         readLegacyDeltaVInts(in, count, docIDs);
@@ -222,7 +321,7 @@ final class DocIdsWriter {
   }
 
   private static void readLegacyDeltaVInts(IndexInput in, int count, int[] docIDs)
-      throws IOException {
+          throws IOException {
     int doc = 0;
     for (int i = 0; i < count; i++) {
       doc += in.readVInt();
@@ -299,6 +398,9 @@ final class DocIdsWriter {
       case BPV_32:
         readInts32(in, count, visitor);
         break;
+      case ROARING:
+        readRoaringBitmap(in, count, visitor);
+        break;
       case LEGACY_DELTA_VINT:
         readLegacyDeltaVInts(in, count, visitor);
         break;
@@ -308,13 +410,13 @@ final class DocIdsWriter {
   }
 
   private static void readBitSet(IndexInput in, int count, IntersectVisitor visitor)
-      throws IOException {
+          throws IOException {
     DocIdSetIterator bitSetIterator = readBitSetIterator(in, count);
     visitor.visit(bitSetIterator);
   }
 
   private static void readContinuousIds(IndexInput in, int count, IntersectVisitor visitor)
-      throws IOException {
+          throws IOException {
     int start = in.readVInt();
     int extra = start & 63;
     int offset = start - extra;
@@ -325,7 +427,7 @@ final class DocIdsWriter {
   }
 
   private static void readLegacyDeltaVInts(IndexInput in, int count, IntersectVisitor visitor)
-      throws IOException {
+          throws IOException {
     int doc = 0;
     for (int i = 0; i < count; i++) {
       doc += in.readVInt();
@@ -341,7 +443,7 @@ final class DocIdsWriter {
   }
 
   private static void readInts24(IndexInput in, int count, IntersectVisitor visitor)
-      throws IOException {
+          throws IOException {
     int i;
     for (i = 0; i < count - 7; i += 8) {
       long l1 = in.readLong();
