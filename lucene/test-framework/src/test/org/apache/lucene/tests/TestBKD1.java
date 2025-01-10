@@ -156,24 +156,24 @@ public class TestBKD1 extends LuceneTestCase {
         writer.close();
     }
 
+//    private static String dictName(int cardinality, int docCount) throws IOException {
+//        return "roaring_2long_optimized_index_"
+//        //return "bpv_21_index_"
+//                + docCount
+//                + "_doc_"
+//                + cardinality
+//                + "_cardinality_"
+//                + (BASELINE ? "baseline" : "candidate");
+ //   }
+
     private static String dictName(int cardinality, int docCount) throws IOException {
-        return "roaring_fast_packed_bpv16_optimized_index_"
-        //return "bpv_21_index_"
+        return "baseline_index_"
                 + docCount
                 + "_doc_"
                 + cardinality
                 + "_cardinality_"
                 + (BASELINE ? "baseline" : "candidate");
     }
-
-//    private static String dictName(int cardinality, int docCount) throws IOException {
-//        return "Baseline_merged_index_"
-//                + docCount
-//                + "_doc_"
-//                + cardinality
-//                + "_cardinality_"
-//                + (BASELINE ? "baseline" : "candidate");
-//    }
 
     private static void search(int cardinality, int docCount, int termCount) throws IOException {
         if (SEARCH == false) {

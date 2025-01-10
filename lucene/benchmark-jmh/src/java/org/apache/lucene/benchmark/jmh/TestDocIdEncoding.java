@@ -20,19 +20,19 @@ public class TestDocIdEncoding extends LuceneTestCase {
     }
 
     public void testBPV21AndAbove() throws IOException {
-        List<DocIdEncodingBenchmark.DocIdEncoder> encoders =
-                DocIdEncodingBenchmark.DocIdEncoder.SingletonFactory.getAllExcept(Collections.emptyList());
+        List<DocIdEncodingBenchmark1.DocIdEncoder> encoders =
+                DocIdEncodingBenchmark1.DocIdEncoder.SingletonFactory.getAllExcept(Collections.emptyList());
 
         final int[] scratch = new int[512];
 
-        DocIdEncodingBenchmark.DocIdProvider docIdProvider =
-                new DocIdEncodingBenchmark.FixedBPVRandomDocIdProvider();
+        DocIdEncodingBenchmark1.DocIdProvider docIdProvider =
+                new DocIdEncodingBenchmark1.FixedBPVRandomDocIdProvider();
 
         // Use ByteBuffersDirectory instead of FSDirectory
         Directory directory = new ByteBuffersDirectory();
 
         try {
-            for (DocIdEncodingBenchmark.DocIdEncoder encoder : encoders) {
+            for (DocIdEncodingBenchmark1.DocIdEncoder encoder : encoders) {
                 List<int[]> docIdSequences = docIdProvider.getDocIds(encoder.getClass(), 100, 100, 512);
 
                 String encoderFileName = "Encoder_" + encoder.getClass().getSimpleName();

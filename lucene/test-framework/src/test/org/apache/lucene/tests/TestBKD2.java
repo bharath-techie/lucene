@@ -254,7 +254,7 @@ public class TestBKD2 extends LuceneTestCase {
 //
     private static String dictName(int cardinality, int docCount) throws IOException {
         //return "roaring_fast_merged_optimized_index_"
-        return "roaring_fast_optimized_index_"
+        return "baseline_index_"
                 + docCount
                 + "_doc_"
                 + cardinality
