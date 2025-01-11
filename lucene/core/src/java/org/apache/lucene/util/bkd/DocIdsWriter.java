@@ -94,26 +94,25 @@ final class DocIdsWriter {
   }
 
   void writeDocIds(int[] docIds, int start, int count, DataOutput out) throws IOException {
-//    boolean useSortedWithOrder = shouldUseSortedWithOrder(docIds, start, count);
-//
-//    if (useSortedWithOrder) {
-//      //System.out.println("write sorted");
-//      writeSortedWithOrder(docIds, start, count, out);
-//      return;
-//    }
-//    System.out.println("not write sorted");
-
-
     // docs can be sorted either when all docs in a block have the same value
     // or when a segment is sorted
     boolean strictlySorted = true;
     int min = docIds[0];
     int max = docIds[0];
+    short numContainers = 1;
+    short lastHigh = (short)(docIds[start] >>> 16);
     for (int i = 1; i < count; ++i) {
       int last = docIds[start + i - 1];
       int current = docIds[start + i];
       if (last >= current) {
         strictlySorted = false;
+        numContainers++;
+        lastHigh = (short)(docIds[start + i] >>> 16);
+      } else {
+        if ((short)(docIds[start + i] >>> 16) != lastHigh) {
+          numContainers++;
+          lastHigh = (short)(docIds[start + i] >>> 16);
+        }
       }
       min = Math.min(min, current);
       max = Math.max(max, current);
@@ -136,30 +135,6 @@ final class DocIdsWriter {
         writeIdsAsBitSet(docIds, start, count, out);
         return;
       }
-      else if (min2max <= 0xFFFF) {
-        out.writeByte(DELTA_BPV_16);
-        for (int i = 0; i < count; i++) {
-          scratch[i] = docIds[start + i] - min;
-        }
-        out.writeVInt(min);
-        final int halfLen = count >>> 1;
-        for (int i = 0; i < halfLen; ++i) {
-          scratch[i] = scratch[halfLen + i] | (scratch[i] << 16);
-        }
-        for (int i = 0; i < halfLen; i++) {
-          out.writeInt(scratch[i]);
-        }
-        if ((count & 1) == 1) {
-          out.writeShort((short) scratch[count - 1]);
-        }
-        return;
-      }
-      else {
-        //System.out.println("rbmap");
-        out.writeByte(ROARING_BITMAP);
-        writeRoaringBitmap(docIds, start, count, out);
-        return;
-      }
     }
     //System.out.println("bpv -- min2max : " + min2max + " max : " + max);
     if (min2max <= 0xFFFF) {
@@ -178,7 +153,11 @@ final class DocIdsWriter {
       if ((count & 1) == 1) {
         out.writeShort((short) scratch[count - 1]);
       }
-    } else {
+    } else if(shouldUseRoaringBitmap(min2max, max, numContainers)) {
+      out.writeByte(ROARING_BITMAP);
+      writeRoaringBitmap(docIds, start, count, numContainers, out);
+    }
+    else {
       if (max <= 0xFFFFFF) {
         out.writeByte(BPV_24);
         // write them the same way we are reading them.
@@ -216,56 +195,127 @@ final class DocIdsWriter {
     }
   }
 
-
-  private void writeRoaringBitmap(int[] docIds, int start, int count, DataOutput out) throws IOException {
-    short numContainers = 1;
-    short lastHigh = (short)(docIds[start] >>> 16);
-    for (int i = 1; i < count; i++) {
-      if ((short)(docIds[start + i] >>> 16) != lastHigh) {
-        numContainers++;
-        lastHigh = (short)(docIds[start + i] >>> 16);
-      }
+  private boolean shouldUseRoaringBitmap(int min2max, int max, int noOfContainers) {
+    if (min2max <= 0xFFFF) {
+      return false;
     }
+    if(max <= 0xFFFFFF) {
+      return noOfContainers <= 100;
+    } else {
+      return noOfContainers <= 200;
+    }
+  }
+
+  private void writeRoaringBitmap1(int[] docIds, int start, int count, short numContainers, DataOutput out) throws IOException {
+
     out.writeShort(numContainers);
 
-    lastHigh = (short)(docIds[start] >>> 16);
+    // Write container headers (2 containers per long)
+    short lastHigh = (short)(docIds[start] >>> 16);
     int containerStart = 0;
-    for (int i = 1; i <= count; i++) {
-      if (i == count || (short)(docIds[start + i] >>> 16) != lastHigh) {
-        int containerSize = i - containerStart;
-        out.writeInt((lastHigh << 16) | containerSize);
+    int containerIndex = 0;
+    long packedHeader = 0;
 
-        int j = containerStart;
-        while (j + 8 <= containerStart + containerSize) {
-          out.writeLong(((long)(docIds[start + j] & 0xFFFF)) |
-                  ((long)(docIds[start + j + 1] & 0xFFFF) << 16) |
-                  ((long)(docIds[start + j + 2] & 0xFFFF) << 32) |
-                  ((long)(docIds[start + j + 3] & 0xFFFF) << 48));
-          out.writeLong(((long)(docIds[start + j + 4] & 0xFFFF)) |
-                  ((long)(docIds[start + j + 5] & 0xFFFF) << 16) |
-                  ((long)(docIds[start + j + 6] & 0xFFFF) << 32) |
-                  ((long)(docIds[start + j + 7] & 0xFFFF) << 48));
-          j += 8;
+    for (int i = 1; i < count; i++) {
+      short high = (short)(docIds[start + i] >>> 16);
+      if (high != lastHigh) {
+        short containerSize = (short)(i - containerStart);
+        // Pack container header into current long
+        if ((containerIndex & 1) == 0) {
+          packedHeader = ((long)lastHigh << 48) | ((long)containerSize << 32);
+        } else {
+          packedHeader |= ((long)lastHigh << 16) | containerSize;
+          out.writeLong(packedHeader);
         }
-        if (j + 4 <= containerStart + containerSize) {
-          out.writeLong(((long)(docIds[start + j] & 0xFFFF)) |
-                  ((long)(docIds[start + j + 1] & 0xFFFF) << 16) |
-                  ((long)(docIds[start + j + 2] & 0xFFFF) << 32) |
-                  ((long)(docIds[start + j + 3] & 0xFFFF) << 48));
-          j += 4;
+        containerIndex++;
+        lastHigh = high;
+        containerStart = i;
+      }
+    }
+    // Handle last container
+    short containerSize = (short)(count - containerStart);
+    if ((containerIndex & 1) == 0) {
+      packedHeader = ((long)lastHigh << 48) | ((long)containerSize << 32);
+    } else {
+      packedHeader |= ((long)lastHigh << 16) | containerSize;
+    }
+    out.writeLong(packedHeader);
+
+    // Write all low bits packed as longs (4 shorts per long)
+    int i = 0;
+    for (; i < count - 3; i += 4) {
+      long packed = 0L;
+      packed |= ((long)(docIds[start + i] & 0xFFFF));
+      packed |= ((long)(docIds[start + i + 1] & 0xFFFF) << 16);
+      packed |= ((long)(docIds[start + i + 2] & 0xFFFF) << 32);
+      packed |= ((long)(docIds[start + i + 3] & 0xFFFF) << 48);
+      out.writeLong(packed);
+    }
+    // Handle remaining values
+    for (; i < count; i++) {
+      out.writeShort((short)(docIds[start + i] & 0xFFFF));
+    }
+  }
+
+  private void writeRoaringBitmap(int[] docIds, int start, int count, short numContainers, DataOutput out) throws IOException {
+    out.writeShort(numContainers);
+
+    // First pass: determine container boundaries
+    short[] containerStarts = new short[numContainers];
+    short[] containerSizes = new short[numContainers];
+
+    int containerIndex = 0;
+    containerStarts[0] = (short) start;
+    short lastHigh = (short)(docIds[start] >>> 16);
+
+    for (int i = 1; i < count; i++) {
+      int current = docIds[start + i];
+      int previous = docIds[start + i - 1];
+      short currentHigh = (short)(current >>> 16);
+
+      if (previous >= current || currentHigh != lastHigh) {
+        containerSizes[containerIndex] = (short)(i - containerStarts[containerIndex]);
+        containerIndex++;
+        if (containerIndex < numContainers) {
+          containerStarts[containerIndex] = (short) (start + i);
+          lastHigh = currentHigh;
         }
-        if (j < containerStart + containerSize) {
-          long packed = 0;
-          int remaining = containerStart + containerSize - j;
-          for (int k = 0; k < remaining; k++) {
-            packed |= ((long)(docIds[start + j + k] & 0xFFFF)) << (k * 16);
-          }
-          out.writeLong(packed);
-        }
-        if (i < count) {
-          lastHigh = (short)(docIds[start + i] >>> 16);
-          containerStart = i;
-        }
+      }
+    }
+    // Set size for the last container
+    containerSizes[containerIndex] = (short)(count - (containerStarts[containerIndex] - start));
+
+    // Write container headers (2 per long)
+    for (int i = 0; i < numContainers; i += 2) {
+      long packedHeader = 0;
+      packedHeader = ((long)(docIds[containerStarts[i]] >>> 16) << 48) | ((long)containerSizes[i] << 32);
+      if (i + 1 < numContainers) {
+        packedHeader |= ((long)(docIds[containerStarts[i + 1]] >>> 16) << 16) | containerSizes[i + 1];
+      }
+      out.writeLong(packedHeader);
+    }
+
+    // Write the low bits for each container
+    for (int i = 0; i < numContainers; i++) {
+      int containerStart = containerStarts[i];
+      int containerSize = containerSizes[i];
+      int pos = 0;
+
+      // Write full longs (4 shorts)
+      while (pos < containerSize - 3) {
+        long packed = 0L;
+        packed |= ((long)(docIds[containerStart + pos] & 0xFFFF));
+        packed |= ((long)(docIds[containerStart + pos + 1] & 0xFFFF) << 16);
+        packed |= ((long)(docIds[containerStart + pos + 2] & 0xFFFF) << 32);
+        packed |= ((long)(docIds[containerStart + pos + 3] & 0xFFFF) << 48);
+        out.writeLong(packed);
+        pos += 4;
+      }
+
+      // Write remaining values in container
+      while (pos < containerSize) {
+        out.writeShort((short)(docIds[containerStart + pos] & 0xFFFF));
+        pos++;
       }
     }
   }
@@ -449,45 +499,114 @@ final class DocIdsWriter {
     }
   }
 
-  private void readRoaringBitmap(IndexInput in, int count, int[] docIds) throws IOException {
-    final short numContainers = in.readShort();
-    int pos = 0;
+  private void readRoaringBitmap1(IndexInput in, int count, int[] docIds) throws IOException {
+    // Read container count
+    short numContainers = in.readShort();
+    ensureArrayCapacity(numContainers);
+    // Read all container headers packed as longs
+    //short[] containerHighBits = new short[numContainers];
+    //short[] containerSizes = new short[numContainers];
 
-    for (int i = 0; i < numContainers; i++) {
-      int header = in.readInt();
-      int highBits = header >>> 16;
-      int containerSize = header & 0xFFFF;
-
-      int j = 0;
-      while (j + 8 <= containerSize) {
-        long packed1 = in.readLong();
-        long packed2 = in.readLong();
-        docIds[pos++] = (highBits << 16) | ((int)packed1 & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed1 >>> 16) & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed1 >>> 32) & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed1 >>> 48) & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)packed2 & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed2 >>> 16) & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed2 >>> 32) & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed2 >>> 48) & 0xFFFF);
-        j += 8;
-      }
-      if (j + 4 <= containerSize) {
-        long packed = in.readLong();
-        docIds[pos++] = (highBits << 16) | ((int)packed & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed >>> 16) & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed >>> 32) & 0xFFFF);
-        docIds[pos++] = (highBits << 16) | ((int)(packed >>> 48) & 0xFFFF);
-        j += 4;
-      }
-      if (j < containerSize) {
-        long packed = in.readLong();
-        int remaining = containerSize - j;
-        for (int k = 0; k < remaining; k++) {
-          docIds[pos++] = (highBits << 16) | ((int)(packed >>> (k * 16)) & 0xFFFF);
-        }
+    for (int i = 0; i < numContainers; i += 2) {
+      long packedHeader = in.readLong();
+      containerHighBits[i] = (short)(packedHeader >>> 48);
+      containerSizes[i] = (short)((packedHeader >>> 32) & 0xFFFF);
+      if (i + 1 < numContainers) {
+        containerHighBits[i + 1] = (short)((packedHeader >>> 16) & 0xFFFF);
+        containerSizes[i + 1] = (short)(packedHeader & 0xFFFF);
       }
     }
+    int start = 0;
+    // Now read all low bits and combine with appropriate high bits
+    int pos = start;
+    int containerIndex = 0;
+    int remainingInContainer = containerSizes[0];
+    int currentHigh = containerHighBits[0];
+
+    // Read packed longs (4 shorts each)
+    while (pos < start + count - 3) {
+      long packed = in.readLong();
+      for (int j = 0; j < 4 && pos < start + count; j++) {
+        if (remainingInContainer == 0) {
+          containerIndex++;
+          currentHigh = containerHighBits[containerIndex];
+          remainingInContainer = containerSizes[containerIndex];
+        }
+        int lowBits = (int)((packed >>> (16 * j)) & 0xFFFF);
+        docIds[pos++] = (currentHigh << 16) | lowBits;
+        remainingInContainer--;
+      }
+    }
+
+    // Handle remaining values
+    while (pos < start + count) {
+      if (remainingInContainer == 0) {
+        containerIndex++;
+        currentHigh = containerHighBits[containerIndex];
+        remainingInContainer = containerSizes[containerIndex];
+      }
+      short lowBits = in.readShort();
+      docIds[pos++] = (currentHigh << 16) | (lowBits & 0xFFFF);
+      remainingInContainer--;
+    }
+
+    if (pos != start + count) {
+      throw new IOException("Decoded " + (pos - start) + " values, expected " + count);
+    }
+  }
+
+  private void readRoaringBitmap(IndexInput in, int count, int[] docIds) throws IOException {
+    short numContainers = in.readShort();
+    ensureArrayCapacity(numContainers);
+
+    // Read container headers
+    for (int i = 0; i < numContainers; i += 2) {
+      long packedHeader = in.readLong();
+      containerHighBits[i] = (short)(packedHeader >>> 48);
+      containerSizes[i] = (short)((packedHeader >>> 32) & 0xFFFF);
+      if (i + 1 < numContainers) {
+        containerHighBits[i + 1] = (short)((packedHeader >>> 16) & 0xFFFF);
+        containerSizes[i + 1] = (short)(packedHeader & 0xFFFF);
+      }
+    }
+
+    int pos = 0;
+    // Read each container's data
+    for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
+      int containerSize = containerSizes[containerIndex];
+      int currentHigh = containerHighBits[containerIndex];
+      int containerPos = 0;
+
+      // Read full longs (4 shorts)
+      while (containerPos < containerSize - 3) {
+        int highbits = currentHigh << 16;
+        long packed = in.readLong();
+
+        docIds[pos++] = (highbits ) | ((int)packed & 0xFFFF);
+        docIds[pos++] = (highbits) | ((int)(packed >>> 16) & 0xFFFF);
+        docIds[pos++] = (highbits) | ((int)(packed >>> 32) & 0xFFFF);
+        docIds[pos++] = (highbits) | ((int)(packed >>> 48) & 0xFFFF);
+
+        containerPos += 4;
+      }
+
+      // Read remaining values in container
+      while (containerPos < containerSize) {
+        short lowBits = in.readShort();
+        docIds[pos++] = (currentHigh << 16) | (lowBits & 0xFFFF);
+        containerPos++;
+      }
+    }
+
+    if (pos != count) {
+      throw new IOException("Decoded " + pos + " values, expected " + count);
+    }
+  }
+  // Helper method to determine container index for a docId
+  private int getContainerIndex(int lastDocId, int currentDocId) {
+    return (short)(currentDocId >>> 16) == (short)(lastDocId >>> 16) ?
+            (short)(currentDocId >>> 16) :
+            (short)(lastDocId >>> 16);
   }
 
   private void readRoaringBitmap(IndexInput in, int count, IntersectVisitor visitor) throws IOException {

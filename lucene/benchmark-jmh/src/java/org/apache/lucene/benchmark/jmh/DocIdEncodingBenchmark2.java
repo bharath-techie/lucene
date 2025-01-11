@@ -23,6 +23,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.LongsRef;
+import org.apache.lucene.util.RoaringDocIdSet;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -61,7 +62,7 @@ import java.util.stream.Stream;
 @Warmup(iterations = 3, time = 5)
 @Measurement(iterations = 5, time = 8)
 @Fork(value = 1)
-public class DocIdEncodingBenchmark1 {
+public class DocIdEncodingBenchmark2 {
 
     private static final long BPV_21_MASK = 0x1FFFFFL;
 
@@ -553,475 +554,25 @@ public class DocIdEncodingBenchmark1 {
             }
         }
 
+        class RoaringBitmapEncoderOptimizedHighFirstLowSecond implements DocIdEncodingBenchmark2.DocIdEncoder {
 
-        // high and low together - works well
-        class RoaringBitmapEncoder1 implements DocIdEncoder {
-            private final LongsRef scratchLongs = new LongsRef();
-            @Override
-            public void encode(IndexOutput out, int start, int count, int[] docIds) throws IOException {
-                short numContainers = 1;
-                short lastHigh = (short)(docIds[start] >>> 16);
-                for (int i = 1; i < count; i++) {
-                    if ((short)(docIds[start + i] >>> 16) != lastHigh) {
-                        numContainers++;
-                        lastHigh = (short)(docIds[start + i] >>> 16);
-                    }
-                }
-                out.writeShort(numContainers);
 
-                lastHigh = (short)(docIds[start] >>> 16);
-                int containerStart = 0;
-                for (int i = 1; i <= count; i++) {
-                    if (i == count || (short)(docIds[start + i] >>> 16) != lastHigh) {
-                        int containerSize = i - containerStart;
-                        out.writeInt((lastHigh << 16) | containerSize);
-
-                        int j = containerStart;
-                        while (j + 8 <= containerStart + containerSize) {
-                            out.writeLong(((long)(docIds[start + j] & 0xFFFF)) |
-                                    ((long)(docIds[start + j + 1] & 0xFFFF) << 16) |
-                                    ((long)(docIds[start + j + 2] & 0xFFFF) << 32) |
-                                    ((long)(docIds[start + j + 3] & 0xFFFF) << 48));
-                            out.writeLong(((long)(docIds[start + j + 4] & 0xFFFF)) |
-                                    ((long)(docIds[start + j + 5] & 0xFFFF) << 16) |
-                                    ((long)(docIds[start + j + 6] & 0xFFFF) << 32) |
-                                    ((long)(docIds[start + j + 7] & 0xFFFF) << 48));
-                            j += 8;
-                        }
-                        if (j + 4 <= containerStart + containerSize) {
-                            out.writeLong(((long)(docIds[start + j] & 0xFFFF)) |
-                                    ((long)(docIds[start + j + 1] & 0xFFFF) << 16) |
-                                    ((long)(docIds[start + j + 2] & 0xFFFF) << 32) |
-                                    ((long)(docIds[start + j + 3] & 0xFFFF) << 48));
-                            j += 4;
-                        }
-                        if (j < containerStart + containerSize) {
-                            long packed = 0;
-                            int remaining = containerStart + containerSize - j;
-                            for (int k = 0; k < remaining; k++) {
-                                packed |= ((long)(docIds[start + j + k] & 0xFFFF)) << (k * 16);
-                            }
-                            out.writeLong(packed);
-                        }
-                        if (i < count) {
-                            lastHigh = (short)(docIds[start + i] >>> 16);
-                            containerStart = i;
-                        }
-                    }
-                }
-            }
-
-            @Override
-            public void decode(IndexInput in, int start, int count, int[] docIds) throws IOException {
-                final short numContainers = in.readShort();
-                int pos = 0;
-
-                for (int i = 0; i < numContainers; i++) {
-                    int header = in.readInt();
-                    int highBits = header >>> 16;
-                    int containerSize = header & 0xFFFF;
-
-                    int j = 0;
-                    while (j + 8 <= containerSize) {
-                        long packed1 = in.readLong();
-                        long packed2 = in.readLong();
-                        docIds[pos++] = (highBits << 16) | ((int)packed1 & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed1 >>> 16) & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed1 >>> 32) & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed1 >>> 48) & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)packed2 & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed2 >>> 16) & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed2 >>> 32) & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed2 >>> 48) & 0xFFFF);
-                        j += 8;
-                    }
-                    if (j + 4 <= containerSize) {
-                        long packed = in.readLong();
-                        docIds[pos++] = (highBits << 16) | ((int)packed & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed >>> 16) & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed >>> 32) & 0xFFFF);
-                        docIds[pos++] = (highBits << 16) | ((int)(packed >>> 48) & 0xFFFF);
-                        j += 4;
-                    }
-                    if (j < containerSize) {
-                        long packed = in.readLong();
-                        int remaining = containerSize - j;
-                        for (int k = 0; k < remaining; k++) {
-                            docIds[pos++] = (highBits << 16) | ((int)(packed >>> (k * 16)) & 0xFFFF);
-                        }
-                    }
-                }
-            }
-        }
-
-//        class RoaringBitmapEncoderPacked implements DocIdEncoder {
-//            @Override
-//            public void encode(IndexOutput out, int start, int count, int[] docIds) throws IOException {
-//                short numContainers = 1;
-//                short lastHigh = (short)(docIds[start] >>> 16);
-//                for (int i = 1; i < count; i++) {
-//                    if ((short)(docIds[start + i] >>> 16) != lastHigh) {
-//                        numContainers++;
-//                        lastHigh = (short)(docIds[start + i] >>> 16);
-//                    }
-//                }
-//                out.writeShort(numContainers);
-//
-//                lastHigh = (short)(docIds[start] >>> 16);
-//                int containerStart = 0;
-//                for (int i = 1; i <= count; i++) {
-//                    if (i == count || (short)(docIds[start + i] >>> 16) != lastHigh) {
-//                        int containerSize = i - containerStart;
-//                        out.writeInt((lastHigh << 16) | containerSize);
-//
-//                        int j = containerStart;
-//                        while (j + 8 <= containerStart + containerSize) {
-//                            out.writeLong(((long)(docIds[start + j] & 0xFFFF)) |
-//                                    ((long)(docIds[start + j + 1] & 0xFFFF) << 16) |
-//                                    ((long)(docIds[start + j + 2] & 0xFFFF) << 32) |
-//                                    ((long)(docIds[start + j + 3] & 0xFFFF) << 48));
-//                            out.writeLong(((long)(docIds[start + j + 4] & 0xFFFF)) |
-//                                    ((long)(docIds[start + j + 5] & 0xFFFF) << 16) |
-//                                    ((long)(docIds[start + j + 6] & 0xFFFF) << 32) |
-//                                    ((long)(docIds[start + j + 7] & 0xFFFF) << 48));
-//                            j += 8;
-//                        }
-//                        if (j + 4 <= containerStart + containerSize) {
-//                            out.writeLong(((long)(docIds[start + j] & 0xFFFF)) |
-//                                    ((long)(docIds[start + j + 1] & 0xFFFF) << 16) |
-//                                    ((long)(docIds[start + j + 2] & 0xFFFF) << 32) |
-//                                    ((long)(docIds[start + j + 3] & 0xFFFF) << 48));
-//                            j += 4;
-//                        }
-//                        if (j + 2 <= containerStart + containerSize) {
-//                            out.writeInt(((int)(docIds[start + j] & 0xFFFF)) |
-//                                    ((int)(docIds[start + j + 1] & 0xFFFF) << 16));
-//                            j += 2;
-//                        }
-//                        if (j < containerStart + containerSize) {
-//                            out.writeShort((short) (docIds[start + j] & 0xFFFF));
-//                        }
-//                        if (i < count) {
-//                            lastHigh = (short)(docIds[start + i] >>> 16);
-//                            containerStart = i;
-//                        }
-//                    }
-//                }
-//            }
-//
-//            @Override
-//            public void decode(IndexInput in, int start, int count, int[] docIds) throws IOException {
-//                final short numContainers = in.readShort();
-//                int pos = start;
-//
-//                for (int i = 0; i < numContainers; i++) {
-//                    int header = in.readInt();
-//                    int highBits = header >>> 16;
-//                    int containerSize = header & 0xFFFF;
-//                    int highShifted = highBits << 16;
-//                    int j = 0;
-//                    while (j + 8 <= containerSize) {
-//                        long packed1 = in.readLong();
-//                        long packed2 = in.readLong();
-//                        docIds[pos++] = highShifted| ((int)packed1 & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed1 >>> 16) & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed1 >>> 32) & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed1 >>> 48) & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)packed2 & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed2 >>> 16) & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed2 >>> 32) & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed2 >>> 48) & 0xFFFF);
-//                        j += 8;
-//                    }
-//                    if (j + 4 <= containerSize) {
-//                        long packed = in.readLong();
-//                        docIds[pos++] = highShifted | ((int)packed & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed >>> 16) & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed >>> 32) & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed >>> 48) & 0xFFFF);
-//                        j += 4;
-//                    }
-//                    if(j + 2 <= containerSize) {
-//                        int packed = in.readInt();
-//                        docIds[pos++] = highShifted | ((int)packed & 0xFFFF);
-//                        docIds[pos++] = highShifted | ((int)(packed >>> 16) & 0xFFFF);
-//                        j+=2;
-//                    }
-//                    if (j < containerSize) {
-//                        docIds[pos++] = highShifted | in.readShort();
-//                    }
-//
-//                }
-//            }
-//        }
-
-//        class RoaringBitmapEncoderOptimizedHighFirstLowSecond implements DocIdEncodingBenchmark1.DocIdEncoder {
-//            // Read all container headers packed as longs
-//            short[] containerHighBits = new short[512];
-//            short[] containerSizes = new short[512];
-//            @Override
-//            public void encode(IndexOutput out, int start, int count, int[] docIds) throws IOException {
-//                // Count containers and write container count
-//                short numContainers = 1;
-//                short lastHigh = (short)(docIds[start] >>> 16);
-//
-//                for (int i = 1; i < count; i++) {
-//                    short high = (short)(docIds[start + i] >>> 16);
-//                    if (high != lastHigh) {
-//                        numContainers++;
-//                        lastHigh = high;
-//                    }
-//                }
-//                out.writeShort(numContainers);
-//
-//
-//                // Write container headers (2 containers per long)
-//                lastHigh = (short)(docIds[start] >>> 16);
-//                int containerStart = 0;
-//                int containerIndex = 0;
-//                long packedHeader = 0;
-//
-//                for (int i = 1; i < count; i++) {
-//                    short high = (short)(docIds[start + i] >>> 16);
-//                    if (high != lastHigh) {
-//                        short containerSize = (short)(i - containerStart);
-//                        // Pack container header into current long
-//                        if ((containerIndex & 1) == 0) {
-//                            packedHeader = ((long)lastHigh << 48) | ((long)containerSize << 32);
-//                        } else {
-//                            packedHeader |= ((long)lastHigh << 16) | containerSize;
-//                            out.writeLong(packedHeader);
-//                        }
-//                        containerIndex++;
-//                        lastHigh = high;
-//                        containerStart = i;
-//                    }
-//                }
-//                // Handle last container
-//                short containerSize = (short)(count - containerStart);
-//                if ((containerIndex & 1) == 0) {
-//                    packedHeader = ((long)lastHigh << 48) | ((long)containerSize << 32);
-//                } else {
-//                    packedHeader |= ((long)lastHigh << 16) | containerSize;
-//                }
-//                out.writeLong(packedHeader);
-//
-//                // Write all low bits packed as longs (4 shorts per long)
-//                int i = 0;
-//                for (; i < count - 3; i += 4) {
-//                    long packed = 0L;
-//                    packed |= ((long)(docIds[start + i] & 0xFFFF));
-//                    packed |= ((long)(docIds[start + i + 1] & 0xFFFF) << 16);
-//                    packed |= ((long)(docIds[start + i + 2] & 0xFFFF) << 32);
-//                    packed |= ((long)(docIds[start + i + 3] & 0xFFFF) << 48);
-//                    out.writeLong(packed);
-//                }
-//                // Handle remaining values
-//                for (; i < count; i++) {
-//                    out.writeShort((short)(docIds[start + i] & 0xFFFF));
-//                }
-//            }
-//
-//            @Override
-//            public void decode(IndexInput in, int start, int count, int[] docIds) throws IOException {
-//                // Read container count
-//                short numContainers = in.readShort();
-//
-//                // Read all container headers packed as longs
-//                //short[] containerHighBits = new short[numContainers];
-//                //short[] containerSizes = new short[numContainers];
-//
-//                for (int i = 0; i < numContainers; i += 2) {
-//                    long packedHeader = in.readLong();
-//                    containerHighBits[i] = (short)(packedHeader >>> 48);
-//                    containerSizes[i] = (short)((packedHeader >>> 32) & 0xFFFF);
-//                    if (i + 1 < numContainers) {
-//                        containerHighBits[i + 1] = (short)((packedHeader >>> 16) & 0xFFFF);
-//                        containerSizes[i + 1] = (short)(packedHeader & 0xFFFF);
-//                    }
-//                }
-//
-//                // Now read all low bits and combine with appropriate high bits
-//                int pos = start;
-//                int containerIndex = 0;
-//                int remainingInContainer = containerSizes[0];
-//                int currentHigh = containerHighBits[0];
-//
-//                // Read packed longs (4 shorts each)
-//                while (pos < start + count - 3) {
-//                    long packed = in.readLong();
-//                    for (int j = 0; j < 4 && pos < start + count; j++) {
-//                        if (remainingInContainer == 0) {
-//                            containerIndex++;
-//                            currentHigh = containerHighBits[containerIndex];
-//                            remainingInContainer = containerSizes[containerIndex];
-//                        }
-//                        int lowBits = (int)((packed >>> (16 * j)) & 0xFFFF);
-//                        docIds[pos++] = (currentHigh << 16) | lowBits;
-//                        remainingInContainer--;
-//                    }
-//                }
-//
-//                // Handle remaining values
-//                while (pos < start + count) {
-//                    if (remainingInContainer == 0) {
-//                        containerIndex++;
-//                        currentHigh = containerHighBits[containerIndex];
-//                        remainingInContainer = containerSizes[containerIndex];
-//                    }
-//                    short lowBits = in.readShort();
-//                    docIds[pos++] = (currentHigh << 16) | (lowBits & 0xFFFF);
-//                    remainingInContainer--;
-//                }
-//
-//                if (pos != start + count) {
-//                    throw new IOException("Decoded " + (pos - start) + " values, expected " + count);
-//                }
-//            }
-//        }
-
-        class RoaringBitmapEncoderOptimizedHighFirstLowSecond implements DocIdEncodingBenchmark1.DocIdEncoder {
             short[] containerHighBits = new short[512];
             short[] containerSizes = new short[512];
 
             @Override
             public void encode(IndexOutput out, int start, int count, int[] docIds) throws IOException {
-                // Count containers and prepare first container info
-                short numContainers = 1;
-                short firstHigh = (short)(docIds[start] >>> 16);
-                short lastHigh = firstHigh;
-                int containerStart = start;
-
-                // Count containers and collect container information
-                for (int i = start + 1; i < start + count; i++) {
-                    short high = (short)(docIds[i] >>> 16);
-                    if (high != lastHigh) {
-                        containerHighBits[numContainers - 1] = lastHigh;
-                        containerSizes[numContainers - 1] = (short)(i - containerStart);
-                        containerStart = i;
-                        lastHigh = high;
-                        numContainers++;
-                    }
+                RoaringDocIdSet.Builder builder = new RoaringDocIdSet.Builder(docIds[docIds.length - 1]);
+                for (int i = 0; i < count; i++) {
+                    builder.add(docIds[i]);
                 }
-                // Handle last container
-                containerHighBits[numContainers - 1] = lastHigh;
-                containerSizes[numContainers - 1] = (short)(start + count - containerStart);
-
-                // Write numContainers and first container info
-                long firstHeader = ((long)numContainers << 48) |
-                        ((long)containerHighBits[0] << 32) |
-                        ((long)containerSizes[0] << 16);
-                out.writeLong(firstHeader);
-
-                // Write remaining container headers (2 containers per long)
-                for (int i = 1; i < numContainers; i += 2) {
-                    long packedHeader = ((long)containerHighBits[i] << 48) |
-                            ((long)containerSizes[i] << 32);
-                    if (i + 1 < numContainers) {
-                        packedHeader |= ((long)containerHighBits[i + 1] << 16) |
-                                containerSizes[i + 1];
-                    }
-                    out.writeLong(packedHeader);
-                }
-
-                // Write all low bits packed as longs (8 shorts per two longs)
-                int i = start;
-                for (; i < start + count - 7; i += 8) {
-                    long packed1 = 0L;
-                    long packed2 = 0L;
-
-                    packed1 |= ((long)(docIds[i] & 0xFFFF));
-                    packed1 |= ((long)(docIds[i + 1] & 0xFFFF) << 16);
-                    packed1 |= ((long)(docIds[i + 2] & 0xFFFF) << 32);
-                    packed1 |= ((long)(docIds[i + 3] & 0xFFFF) << 48);
-
-                    packed2 |= ((long)(docIds[i + 4] & 0xFFFF));
-                    packed2 |= ((long)(docIds[i + 5] & 0xFFFF) << 16);
-                    packed2 |= ((long)(docIds[i + 6] & 0xFFFF) << 32);
-                    packed2 |= ((long)(docIds[i + 7] & 0xFFFF) << 48);
-
-                    out.writeLong(packed1);
-                    out.writeLong(packed2);
-                }
-
-                // Handle remaining values
-                for (; i < start + count; i++) {
-                    out.writeShort((short)(docIds[i] & 0xFFFF));
-                }
+                RoaringDocIdSet set = builder.build();
+                // how to write to indexoutput
             }
 
             @Override
             public void decode(IndexInput in, int start, int count, int[] docIds) throws IOException {
-                // Read first header containing numContainers and first container info
-                long firstHeader = in.readLong();
-                short numContainers = (short)(firstHeader >>> 48);
-                containerHighBits[0] = (short)((firstHeader >>> 32) & 0xFFFF);
-                containerSizes[0] = (short)((firstHeader >>> 16) & 0xFFFF);
-
-                // Read remaining container headers
-                for (int i = 1; i < numContainers; i += 2) {
-                    long packedHeader = in.readLong();
-                    containerHighBits[i] = (short)(packedHeader >>> 48);
-                    containerSizes[i] = (short)((packedHeader >>> 32) & 0xFFFF);
-                    if (i + 1 < numContainers) {
-                        containerHighBits[i + 1] = (short)((packedHeader >>> 16) & 0xFFFF);
-                        containerSizes[i + 1] = (short)(packedHeader & 0xFFFF);
-                    }
-                }
-
-                int pos = start;
-                int containerIndex = 0;
-                int remainingInContainer = containerSizes[0];
-                int currentHigh = containerHighBits[0] << 16;
-
-                // Main decoding loop - handle 8 values at a time
-                while (pos < start + count - 7) {
-                    long packed1 = in.readLong();
-                    long packed2 = in.readLong();
-
-                    // Unpack 8 values
-                    if (remainingInContainer >= 8) {
-                        // Fast path - all values belong to same container
-                        docIds[pos] = currentHigh | (int)(packed1 & 0xFFFF);
-                        docIds[pos + 1] = currentHigh | (int)((packed1 >>> 16) & 0xFFFF);
-                        docIds[pos + 2] = currentHigh | (int)((packed1 >>> 32) & 0xFFFF);
-                        docIds[pos + 3] = currentHigh | (int)((packed1 >>> 48) & 0xFFFF);
-                        docIds[pos + 4] = currentHigh | (int)(packed2 & 0xFFFF);
-                        docIds[pos + 5] = currentHigh | (int)((packed2 >>> 16) & 0xFFFF);
-                        docIds[pos + 6] = currentHigh | (int)((packed2 >>> 32) & 0xFFFF);
-                        docIds[pos + 7] = currentHigh | (int)((packed2 >>> 48) & 0xFFFF);
-                        remainingInContainer -= 8;
-                    } else {
-                        // Slow path - handle container transitions
-                        for (int j = 0; j < 4; j++) {
-                            if (remainingInContainer == 0) {
-                                currentHigh = containerHighBits[++containerIndex] << 16;
-                                remainingInContainer = containerSizes[containerIndex];
-                            }
-                            docIds[pos + j] = currentHigh | (int)((packed1 >>> (16 * j)) & 0xFFFF);
-                            remainingInContainer--;
-                        }
-                        for (int j = 0; j < 4; j++) {
-                            if (remainingInContainer == 0) {
-                                currentHigh = containerHighBits[++containerIndex] << 16;
-                                remainingInContainer = containerSizes[containerIndex];
-                            }
-                            docIds[pos + 4 + j] = currentHigh | (int)((packed2 >>> (16 * j)) & 0xFFFF);
-                            remainingInContainer--;
-                        }
-                    }
-                    pos += 8;
-                }
-
-                // Handle remaining values
-                while (pos < start + count) {
-                    if (remainingInContainer == 0) {
-                        currentHigh = containerHighBits[++containerIndex] << 16;
-                        remainingInContainer = containerSizes[containerIndex];
-                    }
-                    docIds[pos++] = currentHigh | (in.readShort() & 0xFFFF);
-                    remainingInContainer--;
-                }
+                // and read back here
             }
         }
 
@@ -1031,16 +582,15 @@ public class DocIdEncodingBenchmark1 {
 
     interface DocIdProvider {
 
-        Map<Class<? extends DocIdEncodingBenchmark1.DocIdEncoder>, Integer> ENCODER_TO_BPV_MAPPING = Map.ofEntries(
-                Map.entry(DocIdEncodingBenchmark1.DocIdEncoder.Bit21With2StepsEncoder.class, 21),
-                Map.entry(DocIdEncodingBenchmark1.DocIdEncoder.Bit21With3StepsEncoder.class, 21),
-                Map.entry(DocIdEncodingBenchmark1.DocIdEncoder.Bit21With2StepsOnlyRWLongEncoder.class, 21),
-                Map.entry(DocIdEncodingBenchmark1.DocIdEncoder.Bit21With3StepsEncoderOnlyRWLongEncoder.class, 21),
-                Map.entry(DocIdEncodingBenchmark1.DocIdEncoder.Bit21HybridEncoder.class, 21),
-                Map.entry(DocIdEncodingBenchmark1.DocIdEncoder.Bit24Encoder.class, 24),
-                Map.entry(DocIdEncodingBenchmark1.DocIdEncoder.Bit32Encoder.class, 32),
+        Map<Class<? extends DocIdEncodingBenchmark2.DocIdEncoder>, Integer> ENCODER_TO_BPV_MAPPING = Map.ofEntries(
+                Map.entry(DocIdEncodingBenchmark2.DocIdEncoder.Bit21With2StepsEncoder.class, 21),
+                Map.entry(DocIdEncodingBenchmark2.DocIdEncoder.Bit21With3StepsEncoder.class, 21),
+                Map.entry(DocIdEncodingBenchmark2.DocIdEncoder.Bit21With2StepsOnlyRWLongEncoder.class, 21),
+                Map.entry(DocIdEncodingBenchmark2.DocIdEncoder.Bit21With3StepsEncoderOnlyRWLongEncoder.class, 21),
+                Map.entry(DocIdEncodingBenchmark2.DocIdEncoder.Bit21HybridEncoder.class, 21),
+                Map.entry(DocIdEncodingBenchmark2.DocIdEncoder.Bit24Encoder.class, 24),
+                Map.entry(DocIdEncodingBenchmark2.DocIdEncoder.Bit32Encoder.class, 32),
                 Map.entry(DocIdEncoder.Bit32OnlyRWLongEncoder.class, 32),
-                Map.entry(DocIdEncoder.RoaringBitmapEncoder1.class, 26),
                 //Map.entry(DocIdEncoder.RoaringBitmapEncoderPacked.class, 32),
                 Map.entry(DocIdEncoder.RoaringBitmapEncoderOptimizedHighFirstLowSecond.class, 32)
                 //Map.entry(DocIdEncoder.DeltaDocIdEncoder.class, 16)
@@ -1079,7 +629,7 @@ public class DocIdEncodingBenchmark1 {
         }
     }
 
-    static class FixedBPVRandomDocIdProvider implements DocIdEncodingBenchmark1.DocIdProvider {
+    static class FixedBPVRandomDocIdProvider implements DocIdEncodingBenchmark2.DocIdProvider {
 
         private static final Random RANDOM = new Random();
 
@@ -1138,7 +688,7 @@ public class DocIdEncodingBenchmark1 {
 
     public static void main(String[] args) throws Exception {
         Options opt = new OptionsBuilder()
-                .include(DocIdEncodingBenchmark1.class.getSimpleName())
+                .include(DocIdEncodingBenchmark2.class.getSimpleName())
                 .forks(1)
                 .warmupIterations(1)
                 .warmupTime(TimeValue.seconds(5))

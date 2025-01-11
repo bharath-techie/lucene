@@ -81,35 +81,35 @@ public class TestBKD1 extends LuceneTestCase {
     }
 
     public void test2dPoints() throws IOException {
-        index(32, 100000000);
+        //index(32, 100000000);
         search(32, 100000000, 1);
         search(32, 100000000, 2);
         search(32, 100000000, 4);
         search(32, 100000000, 8);
         search(32, 100000000, 16);
 
-        index(128, 100000000);
+        //index(128, 100000000);
         search(128, 100000000, 1);
         search(128, 100000000, 8);
         search(128, 100000000, 16);
         search(128, 100000000, 32);
         search(128, 100000000, 64);
 
-        index(1024, 100000000);
+        //index(1024, 100000000);
         search(1024, 100000000, 1);
         search(1024, 100000000, 8);
         search(1024, 100000000, 32);
         search(1024, 100000000, 128);
         search(1024, 100000000, 512);
 
-        index(8192, 100000000);
+        //index(8192, 100000000);
         search(8192, 100000000, 1);
         search(8192, 100000000, 16);
         search(8192, 100000000, 64);
         search(8192, 100000000, 512);
         search(8192, 100000000, 2048);
 
-        index(1048576, 100000000);
+        //index(1048576, 100000000);
         search(1048576, 100000000, 1);
         search(1048576, 100000000, 16);
         search(1048576, 100000000, 64);
@@ -156,15 +156,15 @@ public class TestBKD1 extends LuceneTestCase {
         writer.close();
     }
 
-//    private static String dictName(int cardinality, int docCount) throws IOException {
-//        return "roaring_2long_optimized_index_"
+//`    private static String dictName(int cardinality, int docCount) throws IOException {
+//        return "roaring_non_sorted_optimized_index_"
 //        //return "bpv_21_index_"
 //                + docCount
 //                + "_doc_"
 //                + cardinality
 //                + "_cardinality_"
 //                + (BASELINE ? "baseline" : "candidate");
- //   }
+//    }`
 
     private static String dictName(int cardinality, int docCount) throws IOException {
         return "baseline_index_"
