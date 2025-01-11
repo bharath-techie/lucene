@@ -154,31 +154,6 @@ final class DocIdsWriter {
         out.writeByte(BITSET_IDS);
         writeIdsAsBitSet(docIds, start, count, out);
         return;
-      } else if (min2max <= 0xFFFF) {
-        out.writeByte(DELTA_BPV_16);
-        for (int i = 0; i < count; i++) {
-          scratch[i] = docIds[start + i] - min;
-        }
-        out.writeVInt(min);
-        final int halfLen = count >>> 1;
-        for (int i = 0; i < halfLen; ++i) {
-          scratch[i] = scratch[halfLen + i] | (scratch[i] << 16);
-        }
-        for (int i = 0; i < halfLen; i++) {
-          out.writeInt(scratch[i]);
-        }
-        if ((count & 1) == 1) {
-          out.writeShort((short) scratch[count - 1]);
-        }
-        return;
-      } else {
-        if(createdForWriting) {
-          numDocIdSequencesWritten++;
-          rawDocIdFileWriter.println(Arrays.toString(docIds).replace("[", "").replace("]", ""));
-        }
-        out.writeByte(ROARING);
-        writeRoaringBitmap(docIds, start, count, numContainers, out);
-        return;
       }
     }
 
@@ -478,6 +453,9 @@ final class DocIdsWriter {
       case CONTINUOUS_IDS:
         readContinuousIds(in, count, docIDs);
         break;
+      case ROARING_BITMAP:
+        readRoaringBitmap(in, count, docIDs);
+        break;
       case BITSET_IDS:
         readBitSet(in, count, docIDs);
         break;
@@ -489,9 +467,6 @@ final class DocIdsWriter {
         break;
       case BPV_32:
         readInts32(in, count, docIDs);
-        break;
-      case ROARING:
-        readRoaringBitmap(in, count, docIDs);
         break;
       case LEGACY_DELTA_VINT:
         readLegacyDeltaVInts(in, count, docIDs);
@@ -595,7 +570,7 @@ final class DocIdsWriter {
       case BPV_32:
         readInts32(in, count, visitor);
         break;
-      case ROARING:
+      case ROARING_BITMAP:
         readRoaringBitmap(in, count, visitor);
         break;
       case LEGACY_DELTA_VINT:
