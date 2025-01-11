@@ -16,7 +16,20 @@
  */
 package org.apache.lucene.util.bkd;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.UUID;
+
 import org.apache.lucene.index.PointValues.IntersectVisitor;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.DataOutput;
@@ -35,6 +48,7 @@ final class DocIdsWriter {
   private static final byte ROARING = (byte) 1;
   // These signs are legacy, should no longer be used in the writing side.
   private static final byte LEGACY_DELTA_VINT = (byte) 0;
+  private static final byte ROARING_BITMAP = (byte) 6; // New format identifier
 
   private final int[] scratch;
 
@@ -49,13 +63,54 @@ final class DocIdsWriter {
    */
   private final IntsRef scratchIntsRef = new IntsRef();
 
+  // Declare these as instance variables to reuse across calls
+  private short[] containerHighBits;
+  private short[] containerSizes;
+  private static final Path TEMP_DIR_FOR_DOCIDS;
+  static {
+    try {
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss_", Locale.ROOT);
+      String formattedNow = ZonedDateTime.now(ZoneId.of("Asia/Kolkata")).format(formatter);
+      TEMP_DIR_FOR_DOCIDS = Files.createTempDirectory("docIds_" + formattedNow);
+      System.out.println("Temp directory where docIds will be written is " + TEMP_DIR_FOR_DOCIDS);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+  private boolean createdForWriting = false;
+  private PrintWriter rawDocIdFileWriter;
+  private Path docIdsFile;
+  private long numDocIdSequencesWritten = 0L;
+
+
+
+  // Initialize or resize arrays when needed
+  private void ensureArrayCapacity(int numContainers) {
+    if (containerHighBits == null || containerHighBits.length < numContainers) {
+      containerHighBits = new short[numContainers];
+      containerSizes = new short[numContainers];
+    }
+  }
+
   {
     // This is here to not rely on the default constructor of IntsRef to set offset to 0
     scratchIntsRef.offset = 0;
   }
 
-  DocIdsWriter(int maxPointsInLeaf) {
+  DocIdsWriter(int maxPointsInLeaf, Object... args) {
     scratch = new int[maxPointsInLeaf];
+    if (args != null && args.length > 0) {
+      this.createdForWriting = (boolean) args[0];
+      try {
+        docIdsFile = TEMP_DIR_FOR_DOCIDS.resolve(UUID.randomUUID() + "_" + System.nanoTime());
+        this.rawDocIdFileWriter =
+                new PrintWriter(
+                        new BufferedWriter(
+                                new FileWriter(docIdsFile.toString(), Charset.defaultCharset())));
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   void writeDocIds(int[] docIds, int start, int count, DataOutput out) throws IOException {
@@ -64,15 +119,25 @@ final class DocIdsWriter {
     boolean strictlySorted = true;
     int min = docIds[0];
     int max = docIds[0];
+    short numContainers = 1;
+    short lastHigh = (short)(docIds[start] >>> 16);
     for (int i = 1; i < count; ++i) {
       int last = docIds[start + i - 1];
       int current = docIds[start + i];
       if (last >= current) {
         strictlySorted = false;
+        numContainers++;
+        lastHigh = (short)(docIds[start + i] >>> 16);
+      } else {
+        if ((short)(docIds[start + i] >>> 16) != lastHigh) {
+          numContainers++;
+          lastHigh = (short)(docIds[start + i] >>> 16);
+        }
       }
       min = Math.min(min, current);
       max = Math.max(max, current);
     }
+
 
     int min2max = max - min + 1;
     if (strictlySorted) {
@@ -107,8 +172,12 @@ final class DocIdsWriter {
         }
         return;
       } else {
+        if(createdForWriting) {
+          numDocIdSequencesWritten++;
+          rawDocIdFileWriter.println(Arrays.toString(docIds).replace("[", "").replace("]", ""));
+        }
         out.writeByte(ROARING);
-        writeRoaringBitmap(docIds, start, count, out);
+        writeRoaringBitmap(docIds, start, count, numContainers, out);
         return;
       }
     }
@@ -129,6 +198,12 @@ final class DocIdsWriter {
       if ((count & 1) == 1) {
         out.writeShort((short) scratch[count - 1]);
       }
+    } else if(shouldUseRoaringBitmap(min2max, max, numContainers)) {
+      numDocIdSequencesWritten++;
+      rawDocIdFileWriter.println(Arrays.toString(docIds).replace("[", "").replace("]", ""));
+
+      out.writeByte(ROARING_BITMAP);
+      writeRoaringBitmap(docIds, start, count, numContainers, out);
     } else {
       if (max <= 0xFFFFFF) {
         out.writeByte(BPV_24);
@@ -167,6 +242,17 @@ final class DocIdsWriter {
     }
   }
 
+  private boolean shouldUseRoaringBitmap(int min2max, int max, int noOfContainers) {
+    if (min2max <= 0xFFFF) {
+      return false;
+    }
+    if(max <= 0xFFFFFF) {
+      return noOfContainers <= 100;
+    } else {
+      return noOfContainers <= 200;
+    }
+  }
+
   private static void writeIdsAsBitSet(int[] docIds, int start, int count, DataOutput out)
           throws IOException {
     int min = docIds[start];
@@ -200,7 +286,7 @@ final class DocIdsWriter {
     assert currentWordIndex + 1 == totalWordCount;
   }
 
-  private void writeRoaringBitmap(int[] docIds, int start, int count, DataOutput out) throws IOException {
+  private void writeRoaringBitmap1(int[] docIds, int start, int count, DataOutput out) throws IOException {
     // Count and write containers
     short numContainers = 1;
     short lastHigh = (short)(docIds[start] >>> 16);
@@ -241,7 +327,70 @@ final class DocIdsWriter {
     }
   }
 
-  private void readRoaringBitmap(IndexInput in, int count, int[] docIds) throws IOException {
+  private void writeRoaringBitmap(int[] docIds, int start, int count, short numContainers, DataOutput out) throws IOException {
+    out.writeShort(numContainers);
+
+    // First pass: determine container boundaries
+    short[] containerStarts = new short[numContainers];
+    short[] containerSizes = new short[numContainers];
+
+    int containerIndex = 0;
+    containerStarts[0] = (short) start;
+    short lastHigh = (short)(docIds[start] >>> 16);
+
+    for (int i = 1; i < count; i++) {
+      int current = docIds[start + i];
+      int previous = docIds[start + i - 1];
+      short currentHigh = (short)(current >>> 16);
+
+      if (previous >= current || currentHigh != lastHigh) {
+        containerSizes[containerIndex] = (short)(i - containerStarts[containerIndex]);
+        containerIndex++;
+        if (containerIndex < numContainers) {
+          containerStarts[containerIndex] = (short) (start + i);
+          lastHigh = currentHigh;
+        }
+      }
+    }
+    // Set size for the last container
+    containerSizes[containerIndex] = (short)(count - (containerStarts[containerIndex] - start));
+
+    // Write container headers (2 per long)
+    for (int i = 0; i < numContainers; i += 2) {
+      long packedHeader = 0;
+      packedHeader = ((long)(docIds[containerStarts[i]] >>> 16) << 48) | ((long)containerSizes[i] << 32);
+      if (i + 1 < numContainers) {
+        packedHeader |= ((long)(docIds[containerStarts[i + 1]] >>> 16) << 16) | containerSizes[i + 1];
+      }
+      out.writeLong(packedHeader);
+    }
+
+    // Write the low bits for each container
+    for (int i = 0; i < numContainers; i++) {
+      int containerStart = containerStarts[i];
+      int containerSize = containerSizes[i];
+      int pos = 0;
+
+      // Write full longs (4 shorts)
+      while (pos < containerSize - 3) {
+        long packed = 0L;
+        packed |= ((long)(docIds[containerStart + pos] & 0xFFFF));
+        packed |= ((long)(docIds[containerStart + pos + 1] & 0xFFFF) << 16);
+        packed |= ((long)(docIds[containerStart + pos + 2] & 0xFFFF) << 32);
+        packed |= ((long)(docIds[containerStart + pos + 3] & 0xFFFF) << 48);
+        out.writeLong(packed);
+        pos += 4;
+      }
+
+      // Write remaining values in container
+      while (pos < containerSize) {
+        out.writeShort((short)(docIds[containerStart + pos] & 0xFFFF));
+        pos++;
+      }
+    }
+  }
+
+  private void readRoaringBitmap1(IndexInput in, int count, int[] docIds) throws IOException {
     final short numContainers = in.readShort();
     int pos = 0;
 
@@ -265,6 +414,54 @@ final class DocIdsWriter {
       }
     }
 
+  }
+
+  private void readRoaringBitmap(IndexInput in, int count, int[] docIds) throws IOException {
+    short numContainers = in.readShort();
+    ensureArrayCapacity(numContainers);
+
+    // Read container headers
+    for (int i = 0; i < numContainers; i += 2) {
+      long packedHeader = in.readLong();
+      containerHighBits[i] = (short)(packedHeader >>> 48);
+      containerSizes[i] = (short)((packedHeader >>> 32) & 0xFFFF);
+      if (i + 1 < numContainers) {
+        containerHighBits[i + 1] = (short)((packedHeader >>> 16) & 0xFFFF);
+        containerSizes[i + 1] = (short)(packedHeader & 0xFFFF);
+      }
+    }
+
+    int pos = 0;
+    // Read each container's data
+    for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
+      int containerSize = containerSizes[containerIndex];
+      int currentHigh = containerHighBits[containerIndex];
+      int containerPos = 0;
+
+      // Read full longs (4 shorts)
+      while (containerPos < containerSize - 3) {
+        int highbits = currentHigh << 16;
+        long packed = in.readLong();
+
+        docIds[pos++] = (highbits ) | ((int)packed & 0xFFFF);
+        docIds[pos++] = (highbits) | ((int)(packed >>> 16) & 0xFFFF);
+        docIds[pos++] = (highbits) | ((int)(packed >>> 32) & 0xFFFF);
+        docIds[pos++] = (highbits) | ((int)(packed >>> 48) & 0xFFFF);
+
+        containerPos += 4;
+      }
+
+      // Read remaining values in container
+      while (containerPos < containerSize) {
+        short lowBits = in.readShort();
+        docIds[pos++] = (currentHigh << 16) | (lowBits & 0xFFFF);
+        containerPos++;
+      }
+    }
+
+    if (pos != count) {
+      throw new IOException("Decoded " + pos + " values, expected " + count);
+    }
   }
 
   private void readRoaringBitmap(IndexInput in, int count, IntersectVisitor visitor) throws IOException {
@@ -468,5 +665,21 @@ final class DocIdsWriter {
     scratchIntsRef.ints = scratch;
     scratchIntsRef.length = count;
     visitor.visit(scratchIntsRef);
+  }
+
+  public void close() {
+    if (createdForWriting && rawDocIdFileWriter != null) {
+      rawDocIdFileWriter.close();
+      if (numDocIdSequencesWritten == 0) {
+        try {
+          // To avoid creating a zero byte file.
+          Files.delete(docIdsFile);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      } else {
+        System.out.println("Written " + numDocIdSequencesWritten + " docId sequences");
+      }
+    }
   }
 }
