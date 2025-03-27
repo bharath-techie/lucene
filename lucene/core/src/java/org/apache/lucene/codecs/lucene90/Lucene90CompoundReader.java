@@ -30,7 +30,6 @@ import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.store.ReadAdvice;
 import org.apache.lucene.util.CollectionUtil;
 import org.apache.lucene.util.IOUtils;
 
@@ -57,7 +56,8 @@ final class Lucene90CompoundReader extends CompoundDirectory {
   /** Create a new CompoundFileDirectory. */
   // TODO: we should just pre-strip "entries" and append segment name up-front like simpletext?
   // this need not be a "general purpose" directory anymore (it only writes index files)
-  public Lucene90CompoundReader(Directory directory, SegmentInfo si) throws IOException {
+  public Lucene90CompoundReader(Directory directory, SegmentInfo si, IOContext context)
+      throws IOException {
     this.directory = directory;
     this.segmentName = si.name;
     String dataFileName =
@@ -75,7 +75,7 @@ final class Lucene90CompoundReader extends CompoundDirectory {
                 .orElseGet(() -> CodecUtil.indexHeaderLength(Lucene90CompoundFormat.DATA_CODEC, ""))
             + CodecUtil.footerLength();
 
-    handle = directory.openInput(dataFileName, IOContext.DEFAULT.withReadAdvice(ReadAdvice.NORMAL));
+    handle = directory.openInput(dataFileName, context);
     try {
       CodecUtil.checkIndexHeader(
           handle, Lucene90CompoundFormat.DATA_CODEC, version, version, si.getId(), "");
@@ -169,7 +169,7 @@ final class Lucene90CompoundReader extends CompoundDirectory {
               + entries.keySet()
               + ")");
     }
-    return handle.slice(name, entry.offset, entry.length, context.readAdvice());
+    return handle.slice(name, entry.offset, entry.length);
   }
 
   /** Returns an array of strings, one for each file in the directory. */

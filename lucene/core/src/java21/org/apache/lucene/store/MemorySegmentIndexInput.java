@@ -622,8 +622,7 @@ abstract class MemorySegmentIndexInput extends IndexInput
   public final MemorySegmentIndexInput slice(
       String sliceDescription, long offset, long length, ReadAdvice advice) throws IOException {
     MemorySegmentIndexInput slice = slice(sliceDescription, offset, length);
-    if (NATIVE_ACCESS.isPresent() && advice != ReadAdvice.NORMAL) {
-      // No need to madvise with a normal advice, since it's the OS' default.
+    if (NATIVE_ACCESS.isPresent()) {
       final NativeAccess nativeAccess = NATIVE_ACCESS.get();
       if (length >= nativeAccess.getPageSize()) {
         // Only set the read advice if the inner file is large enough. Otherwise the cons are likely

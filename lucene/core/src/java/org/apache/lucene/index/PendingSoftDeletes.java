@@ -226,7 +226,12 @@ final class PendingSoftDeletes extends PendingDeletes {
       // updates always outside of CFS
       Closeable toClose;
       if (segInfo.getUseCompoundFile()) {
-        toClose = dir = segInfo.getCodec().compoundFormat().getCompoundReader(segInfo.dir, segInfo);
+        toClose =
+            dir =
+                segInfo
+                    .getCodec()
+                    .compoundFormat()
+                    .getCompoundReader(segInfo.dir, segInfo, IOContext.READONCE);
       } else {
         toClose = null;
         dir = segInfo.dir;

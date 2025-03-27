@@ -122,7 +122,10 @@ final class PosixNativeAccess extends NativeAccess {
 
   @Override
   public void madvise(MemorySegment segment, ReadAdvice readAdvice) throws IOException {
-    final int advice = mapReadAdvice(readAdvice);
+    final Integer advice = mapReadAdvice(readAdvice);
+    if (advice == null) {
+      return; // do nothing
+    }
     madvise(segment, advice);
   }
 
@@ -153,7 +156,7 @@ final class PosixNativeAccess extends NativeAccess {
     }
   }
 
-  private int mapReadAdvice(ReadAdvice readAdvice) {
+  private Integer mapReadAdvice(ReadAdvice readAdvice) {
     return switch (readAdvice) {
       case NORMAL -> POSIX_MADV_NORMAL;
       case RANDOM -> POSIX_MADV_RANDOM;

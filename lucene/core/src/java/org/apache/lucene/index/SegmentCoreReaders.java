@@ -80,7 +80,7 @@ final class SegmentCoreReaders {
 
     try {
       if (si.info.getUseCompoundFile()) {
-        cfsDir = cfsReader = codec.compoundFormat().getCompoundReader(dir, si.info);
+        cfsDir = cfsReader = codec.compoundFormat().getCompoundReader(dir, si.info, context);
       } else {
         cfsReader = null;
         cfsDir = dir;

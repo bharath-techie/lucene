@@ -34,8 +34,9 @@ class CrankyCompoundFormat extends CompoundFormat {
   }
 
   @Override
-  public CompoundDirectory getCompoundReader(Directory dir, SegmentInfo si) throws IOException {
-    return delegate.getCompoundReader(dir, si);
+  public CompoundDirectory getCompoundReader(Directory dir, SegmentInfo si, IOContext context)
+      throws IOException {
+    return delegate.getCompoundReader(dir, si, context);
   }
 
   @Override

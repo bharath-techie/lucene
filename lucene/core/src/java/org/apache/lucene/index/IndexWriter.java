@@ -1255,7 +1255,8 @@ public class IndexWriter
       return reader.read(si.info.dir, si.info, segmentSuffix, IOContext.READONCE);
     } else if (si.info.getUseCompoundFile()) {
       // cfs
-      try (Directory cfs = codec.compoundFormat().getCompoundReader(si.info.dir, si.info)) {
+      try (Directory cfs =
+          codec.compoundFormat().getCompoundReader(si.info.dir, si.info, IOContext.DEFAULT)) {
         return reader.read(cfs, si.info, "", IOContext.READONCE);
       }
     } else {
