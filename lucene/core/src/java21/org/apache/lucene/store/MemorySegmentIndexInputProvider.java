@@ -65,14 +65,7 @@ final class MemorySegmentIndexInputProvider
           MemorySegmentIndexInput.newInstance(
               resourceDescription,
               arena,
-              map(
-                  arena,
-                  resourceDescription,
-                  fc,
-                  context.readAdvice(),
-                  chunkSizePower,
-                  preload,
-                  fileSize),
+              map(arena, resourceDescription, fc, context, chunkSizePower, preload, fileSize),
               fileSize,
               chunkSizePower,
               confined);
@@ -99,7 +92,7 @@ final class MemorySegmentIndexInputProvider
       Arena arena,
       String resourceDescription,
       FileChannel fc,
-      ReadAdvice readAdvice,
+      IOContext context,
       int chunkSizePower,
       boolean preload,
       long length)
@@ -125,12 +118,11 @@ final class MemorySegmentIndexInputProvider
         throw convertMapFailedIOException(ioe, resourceDescription, segSize);
       }
       // if preload apply it without madvise.
-      // skip madvise if the address of our segment is not page-aligned (small segments due to
-      // internal FileChannel logic)
+      // if chunk size is too small (2 MiB), disable madvise support (incorrect alignment)
       if (preload) {
         segment.load();
-      } else if (nativeAccess.filter(na -> segment.address() % na.getPageSize() == 0).isPresent()) {
-        nativeAccess.get().madvise(segment, readAdvice);
+      } else if (nativeAccess.isPresent() && chunkSizePower >= 21) {
+        nativeAccess.get().madvise(segment, context);
       }
       segments[segNr] = segment;
       startOffset += segSize;

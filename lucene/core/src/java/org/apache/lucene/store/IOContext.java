@@ -31,8 +31,7 @@ import org.apache.lucene.util.Constants;
  * @param flushInfo must be given when {@code context == FLUSH}
  * @param readAdvice Advice regarding the read access pattern
  */
-public record IOContext(
-    Context context, MergeInfo mergeInfo, FlushInfo flushInfo, ReadAdvice readAdvice) {
+public record IOContext(Context context, MergeInfo mergeInfo, FlushInfo flushInfo, ReadAdvice readAdvice) {
 
   /**
    * Context is a enumerator which specifies the context in which the Directory is being used for.
