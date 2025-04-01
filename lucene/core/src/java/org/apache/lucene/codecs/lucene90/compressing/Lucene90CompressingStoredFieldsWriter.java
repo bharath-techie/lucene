@@ -21,6 +21,8 @@ import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.StoredFieldsWriter;
@@ -46,6 +48,7 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.packed.PackedInts;
 
 /**
@@ -80,6 +83,7 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
   static final int VERSION_START = 1;
   static final int VERSION_CURRENT = VERSION_START;
   static final int META_VERSION_START = 0;
+  private InfoStream infoStream = InfoStream.getDefault();
 
   private final String segment;
   private FieldsIndexWriter indexWriter;
@@ -592,6 +596,7 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
     }
 
     // copy leftover docs that don't form a complete chunk
+    System.out.println("Copying docbydoc from : " + docID + " to : "+ toDocID);
     assert reader.isLoaded(docID) == false;
     while (docID < toDocID) {
       copyOneDoc(reader, docID++);
@@ -605,13 +610,17 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
     final List<CompressingStoredFieldsMergeSub> subs =
         new ArrayList<>(mergeState.storedFieldsReaders.length);
     for (int i = 0; i < mergeState.storedFieldsReaders.length; i++) {
+      long st = System.currentTimeMillis();
       final StoredFieldsReader reader = mergeState.storedFieldsReaders[i];
       reader.checkIntegrity();
+      System.out.println("Time taken to check integrity : " + (System.currentTimeMillis() - st));
       MergeStrategy mergeStrategy = getMergeStrategy(mergeState, matchingReaders, i);
       if (mergeStrategy == MergeStrategy.VISITOR) {
         visitors[i] = new MergeVisitor(mergeState, i);
       }
       subs.add(new CompressingStoredFieldsMergeSub(mergeState, mergeStrategy, i));
+      System.out.println("Time taken to add sub : " + (System.currentTimeMillis() - st));
+
     }
     int docCount = 0;
     final DocIDMerger<CompressingStoredFieldsMergeSub> docIDMerger =
@@ -621,6 +630,7 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
       assert sub.mappedDocID == docCount : sub.mappedDocID + " != " + docCount;
       final StoredFieldsReader reader = mergeState.storedFieldsReaders[sub.readerIndex];
       if (sub.mergeStrategy == MergeStrategy.BULK) {
+        long ct = System.currentTimeMillis();
         final int fromDocID = sub.docID;
         int toDocID = fromDocID;
         final CompressingStoredFieldsMergeSub current = sub;
@@ -631,6 +641,7 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
         ++toDocID; // exclusive bound
         copyChunks(mergeState, current, fromDocID, toDocID);
         docCount += (toDocID - fromDocID);
+        System.out.println("Time taken : " + (System.currentTimeMillis() - ct));
       } else if (sub.mergeStrategy == MergeStrategy.DOC) {
         copyOneDoc((Lucene90CompressingStoredFieldsReader) reader, sub.docID);
         ++docCount;
@@ -679,6 +690,8 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
   private MergeStrategy getMergeStrategy(
       MergeState mergeState, MatchingReaders matchingReaders, int readerIndex) {
     final StoredFieldsReader candidate = mergeState.storedFieldsReaders[readerIndex];
+    mergeState.infoStream.message("SM", "Checking for index : " + readerIndex);
+    System.out.println("Checking for index : " + readerIndex);
     if (matchingReaders.matchingReaders[readerIndex] == false
         || candidate instanceof Lucene90CompressingStoredFieldsReader == false
         || ((Lucene90CompressingStoredFieldsReader) candidate).getVersion() != VERSION_CURRENT) {
@@ -692,8 +705,17 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
         // its not worth fine-graining this if there are deletions.
         && mergeState.liveDocs[readerIndex] == null
         && !tooDirty(reader)) {
+      mergeState.infoStream.message(
+              "SM",
+              "Bulk strategy");
+      System.out.println("Bulk strategy");
+
       return MergeStrategy.BULK;
     } else {
+      mergeState.infoStream.message(
+              "SM",
+              "Doc strategy");
+      System.out.println("Doc strategy");
       return MergeStrategy.DOC;
     }
   }

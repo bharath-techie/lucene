@@ -430,6 +430,7 @@ public final class CodecUtil {
    *     is not properly positioned before the footer at the end of the stream.
    */
   public static long checkFooter(ChecksumIndexInput in) throws IOException {
+    long st = System.currentTimeMillis();
     validateFooter(in);
     long actualChecksum = in.getChecksum();
     long expectedChecksum = readCRC(in);
@@ -441,6 +442,7 @@ public final class CodecUtil {
               + Long.toHexString(actualChecksum),
           in);
     }
+    System.out.println("check footer took : " + (System.currentTimeMillis() - st));
     return actualChecksum;
   }
 
@@ -604,9 +606,15 @@ public final class CodecUtil {
    * extract the checksum value, call {@link #retrieveChecksum}.
    */
   public static long checksumEntireFile(IndexInput input) throws IOException {
+    long st = System.currentTimeMillis();
     IndexInput clone = input.clone();
+    System.out.println("Clone took : " + (System.currentTimeMillis() - st));
     clone.seek(0);
+    st = System.currentTimeMillis();
+    System.out.println("Clone seek took : " + (System.currentTimeMillis() - st));
+    st = System.currentTimeMillis();
     ChecksumIndexInput in = new BufferedChecksumIndexInput(clone);
+    System.out.println("ChecksumIndexInput init took : " + (System.currentTimeMillis() - st));
     assert in.getFilePointer() == 0;
     if (in.length() < footerLength()) {
       throw new CorruptIndexException(
@@ -616,7 +624,14 @@ public final class CodecUtil {
               + footerLength(),
           input);
     }
+    st = System.currentTimeMillis();
+    System.out.println("Length : " + in.length() + " , footer length : " + footerLength());
     in.seek(in.length() - footerLength());
+    ((BufferedChecksumIndexInput) in).printStats();
+    ((BufferedChecksumIndexInput) in).resetStats();
+
+    System.out.println("Seek took : " + (System.currentTimeMillis() - st));
+
     return checkFooter(in);
   }
 

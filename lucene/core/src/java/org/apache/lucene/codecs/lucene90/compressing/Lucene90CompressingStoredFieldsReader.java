@@ -41,6 +41,9 @@ import static org.apache.lucene.codecs.lucene90.compressing.Lucene90CompressingS
 import java.io.EOFException;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Locale;
+
+import java.util.Arrays;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.compressing.CompressionMode;
@@ -64,6 +67,7 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LongsRef;
 
 /**
@@ -96,6 +100,8 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
   private final long[] prefetchedBlockIDCache;
   private int prefetchedBlockIDCacheIndex;
   private boolean closed;
+  private final InfoStream infoStream = InfoStream.getDefault();
+
 
   // used by clone
   private Lucene90CompressingStoredFieldsReader(
@@ -194,6 +200,20 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
       numChunks = metaIn.readVLong();
       numDirtyChunks = metaIn.readVLong();
       numDirtyDocs = metaIn.readVLong();
+
+      //if (infoStream.isEnabled("SM")) {
+        infoStream.message(
+                "SM",
+                String.format(
+                        Locale.ROOT,
+                        "ChunkSize : %d , numChunks : %d, numDirtyChunks: %d, numDirtyDocs: %d",
+                        chunkSize, numChunks, numDirtyChunks, numDirtyDocs));
+
+      System.out.println(String.format(
+              Locale.ROOT,
+              "ChunkSize : %d , numChunks : %d, numDirtyChunks: %d, numDirtyDocs: %d",
+              chunkSize, numChunks, numDirtyChunks, numDirtyDocs));
+      //}
 
       if (numChunks < numDirtyChunks) {
         throw new CorruptIndexException(
@@ -572,6 +592,7 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
                   throw new EOFException();
                 }
                 final int toDecompress = Math.min(length - decompressed, chunkSize);
+                System.out.println("fillbuffer : to decompress : " + toDecompress);
                 decompressor.decompress(fieldsStream, toDecompress, 0, toDecompress, bytes);
                 decompressed += toDecompress;
               }

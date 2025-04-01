@@ -71,11 +71,22 @@ abstract class MemorySegmentIndexInput extends IndexInput
       long length,
       int chunkSizePower,
       boolean confined) {
+
     assert Arrays.stream(segments).map(MemorySegment::scope).allMatch(arena.scope()::equals);
+    System.out.println("\nInitializing MemorySegmentIndexInput:");
+    System.out.println("Resource Description: " + resourceDescription);
+    System.out.println("Number of segments: " + segments.length);
+    System.out.println("Total length: " + length);
+    System.out.println("Chunk size power: " + chunkSizePower);
+    System.out.println("Chunk size: " + (1L << chunkSizePower));
+    System.out.println("Confined: " + confined);
+
     if (segments.length == 1) {
+      System.out.println("Creating SingleSegmentImpl");
       return new SingleSegmentImpl(
           resourceDescription, arena, segments[0], length, chunkSizePower, confined);
     } else {
+      System.out.println("Creating MultiSegmentImpl");
       return new MultiSegmentImpl(
           resourceDescription, arena, segments, 0, length, chunkSizePower, confined);
     }
@@ -96,6 +107,17 @@ abstract class MemorySegmentIndexInput extends IndexInput
     this.confined = confined;
     this.chunkSizeMask = (1L << chunkSizePower) - 1L;
     this.curSegment = segments[0];
+    System.out.println("\nConstructing MemorySegmentIndexInput:");
+    System.out.println("Resource Description: " + resourceDescription);
+    System.out.println("Number of segments: " + segments.length);
+    System.out.println("Total length: " + length);
+    System.out.println("Chunk size power: " + chunkSizePower);
+    System.out.println("Chunk size: " + (1L << chunkSizePower));
+    System.out.println("Chunk size mask: " + chunkSizeMask);
+    System.out.println("Confined: " + confined);
+    for (int i = 0; i < segments.length; i++) {
+      System.out.println("Segment " + i + " size: " + segments[i].byteSize());
+    }
   }
 
   void ensureOpen() {
