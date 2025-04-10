@@ -104,6 +104,13 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
     this.version = reader.version;
     this.fieldInfos = reader.fieldInfos;
     this.fieldsStream = reader.fieldsStream.clone();
+    if(merging) {
+      try {
+        this.fieldsStream.updateReadAdvice(ReadAdvice.SEQUENTIAL);
+      } catch (IOException e) {
+        throw new AlreadyClosedException("failed to update read advice", e);
+      }
+    }
     this.indexReader = reader.indexReader.clone();
     this.maxPointer = reader.maxPointer;
     this.chunkSize = reader.chunkSize;
@@ -255,6 +262,11 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
       IOUtils.close(indexReader, fieldsStream);
       closed = true;
     }
+  }
+
+  @Override
+  public void finishMerge() throws IOException {
+    this.fieldsStream.updateReadAdvice(ReadAdvice.RANDOM);
   }
 
   private static void readField(DataInput in, StoredFieldVisitor visitor, FieldInfo info, int bits)
