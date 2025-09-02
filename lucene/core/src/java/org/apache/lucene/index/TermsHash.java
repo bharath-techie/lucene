@@ -47,6 +47,7 @@ abstract class TermsHash {
     this.nextTermsHash = nextTermsHash;
     this.bytesUsed = bytesUsed;
     intPool = new IntBlockPool(intBlockAllocator);
+    // new byte block pool is initialized here
     bytePool = new ByteBlockPool(byteBlockAllocator);
 
     if (nextTermsHash != null) {

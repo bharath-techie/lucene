@@ -348,6 +348,15 @@ public final class ByteBlockPool implements Accountable {
     return size;
   }
 
+  // Add to ByteBlockPool class
+  public int getBufferCount() {
+    return bufferUpto + 1; // bufferUpto is 0-based, -1 means no buffers allocated
+  }
+
+  public boolean isApproachingBufferLimit(int threshold) {
+    return getBufferCount() > 65000; // todo: remove hardcoding
+  }
+
   /** the current position (in absolute value) of this byte pool */
   public long getPosition() {
     return bufferUpto * allocator.blockSize + byteUpto;

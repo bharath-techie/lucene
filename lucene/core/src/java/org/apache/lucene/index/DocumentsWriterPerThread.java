@@ -708,6 +708,14 @@ final class DocumentsWriterPerThread implements Accountable, Lock {
         + "]";
   }
 
+  // Add to DocumentsWriterPerThread class
+  public boolean isApproachingBufferLimit() {
+    return indexingChain.isApproachingBufferLimit(
+        65000); // TODO : don't hardcode , move it to IWC ?
+  }
+
+
+
   /** Returns true iff this DWPT is marked as flush pending */
   boolean isFlushPending() {
     return flushPending.get() == Boolean.TRUE;

@@ -118,6 +118,7 @@ final class IndexingChain implements Accountable {
     if (segmentInfo.getIndexSort() == null) {
       storedFieldsConsumer =
           new StoredFieldsConsumer(indexWriterConfig.getCodec(), directory, segmentInfo);
+      // this goes to terms hash at 141
       termVectorsWriter =
           new TermVectorsConsumer(
               intBlockAllocator,
@@ -128,6 +129,7 @@ final class IndexingChain implements Accountable {
     } else {
       storedFieldsConsumer =
           new SortingStoredFieldsConsumer(indexWriterConfig.getCodec(), directory, segmentInfo);
+      // this goes to terms hash at 141
       termVectorsWriter =
           new SortingTermVectorsConsumer(
               intBlockAllocator,
@@ -136,9 +138,12 @@ final class IndexingChain implements Accountable {
               segmentInfo,
               indexWriterConfig.getCodec());
     }
+    // new byteblockpool is allocated here
     termsHash =
         new FreqProxTermsWriter(
             intBlockAllocator, byteBlockAllocator, bytesUsed, termVectorsWriter);
+
+    // new byteblockpool is allocated here
     docValuesBytePool = new ByteBlockPool(byteBlockAllocator);
   }
 
@@ -146,6 +151,12 @@ final class IndexingChain implements Accountable {
     assert th != null;
     this.hasHitAbortingException = true;
     abortingExceptionConsumer.accept(th);
+  }
+
+  //
+  public boolean isApproachingBufferLimit(int threshold) {
+    return docValuesBytePool.isApproachingBufferLimit(threshold) ||
+        termsHash.bytePool.isApproachingBufferLimit(threshold);
   }
 
   private LeafReader getDocValuesLeafReader() {

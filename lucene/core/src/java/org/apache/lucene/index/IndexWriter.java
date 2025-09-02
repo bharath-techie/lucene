@@ -798,6 +798,7 @@ public class IndexWriter
   }
 
   /** Returns the number of bytes currently being flushed */
+  // This is exposed to opensearch which forces flush in IndexingMemoryController
   public final long getFlushingBytes() {
     ensureOpen();
     return docWriter.getFlushingBytes();
