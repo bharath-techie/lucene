@@ -40,6 +40,7 @@ import static org.apache.lucene.codecs.lucene90.compressing.Lucene90CompressingS
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.StoredFieldsReader;
@@ -98,6 +99,7 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
   private final long[] prefetchedBlockIDCache;
   private int prefetchedBlockIDCacheIndex;
   private boolean closed;
+  private final IOContext dataContext;
 
   // used by clone
   private Lucene90CompressingStoredFieldsReader(
@@ -105,6 +107,14 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
     this.version = reader.version;
     this.fieldInfos = reader.fieldInfos;
     this.fieldsStream = reader.fieldsStream.clone();
+    this.dataContext = reader.dataContext;
+    if (merging) {
+      try {
+        this.fieldsStream.updateIOContext(dataContext.withHints(DataAccessHint.SEQUENTIAL));
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
     this.indexReader = reader.indexReader.clone();
     this.maxPointer = reader.maxPointer;
     this.chunkSize = reader.chunkSize;
@@ -142,8 +152,9 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
     ChecksumIndexInput metaIn = null;
     try {
       // Open the data file
+      dataContext = context.withHints(FileTypeHint.DATA, DataAccessHint.RANDOM);
       fieldsStream =
-          d.openInput(fieldsStreamFN, context.withHints(FileTypeHint.DATA, DataAccessHint.RANDOM));
+          d.openInput(fieldsStreamFN, dataContext);
       version =
           CodecUtil.checkIndexHeader(
               fieldsStream, formatName, VERSION_START, VERSION_CURRENT, si.getId(), segmentSuffix);
@@ -239,6 +250,11 @@ public final class Lucene90CompressingStoredFieldsReader extends StoredFieldsRea
         IOUtils.closeWhileHandlingException(this, metaIn);
       }
     }
+  }
+
+  @Override
+  public void finishMerge() throws IOException {
+    this.fieldsStream.updateIOContext(dataContext);
   }
 
   /**
